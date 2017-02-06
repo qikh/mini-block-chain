@@ -18,8 +18,19 @@ object TransactionExecutor {
    * 区块链的状态更新应该是原子操作，持久层是数据库可以使用事务功能。
    */
   fun applyTrx(trx: Transaction) {
-    addAmount(trx.senderAddress, -trx.amount)
-    addAmount(trx.receiverAddress, +trx.amount)
+    if (trx.isValid) {
+      addAmount(trx.senderAddress, -trx.amount)
+      addAmount(trx.receiverAddress, +trx.amount)
+    } else {
+      throw IllegalTransactionException()
+    }
   }
+
+}
+
+/**
+ * 交易内容非法（没有签名或签名错误）。
+ */
+class IllegalTransactionException : Throwable() {
 
 }

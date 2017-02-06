@@ -1,5 +1,6 @@
 package mbc.util
 
+import mbc.core.Transaction
 import org.spongycastle.jce.provider.BouncyCastleProvider
 import org.spongycastle.util.encoders.Hex
 import java.security.*
@@ -38,6 +39,32 @@ class CryptoUtil {
       val keyPair = gen.generateKeyPair()
       return keyPair
     }
+
+    /**
+     * 发送方用私钥对交易Transaction进行签名。
+     */
+    fun signTransaction(trx: Transaction, privateKey: PrivateKey): ByteArray {
+      val signer = Signature.getInstance("SHA256withECDSA")
+      signer.initSign(privateKey)
+      val msgToSign = getTransactionContentToSign(trx)
+      signer.update(msgToSign)
+      return signer.sign()
+    }
+
+    /**
+     * 验证交易Transaction签名的有效性。
+     */
+    fun verifyTransactionSignature(trx: Transaction, signature: ByteArray): Boolean {
+      val signer = Signature.getInstance("SHA256withECDSA")
+      signer.initVerify(trx.publicKey)
+
+      signer.update(getTransactionContentToSign(trx))
+      return signer.verify(signature)
+    }
+
+    private fun getTransactionContentToSign(
+        trx: Transaction) = (trx.senderAddress + trx.receiverAddress + trx.amount.toString() + trx.time.millis.toString()).toByteArray()
+
   }
 
 }
