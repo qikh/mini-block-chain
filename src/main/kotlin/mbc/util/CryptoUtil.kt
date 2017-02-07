@@ -1,8 +1,10 @@
 package mbc.util
 
+import mbc.core.Block
 import mbc.core.Transaction
 import org.spongycastle.jce.provider.BouncyCastleProvider
 import org.spongycastle.util.encoders.Hex
+import java.nio.ByteBuffer
 import java.security.*
 import java.security.Security.insertProviderAt
 import java.security.spec.ECGenParameterSpec
@@ -46,7 +48,7 @@ class CryptoUtil {
     fun signTransaction(trx: Transaction, privateKey: PrivateKey): ByteArray {
       val signer = Signature.getInstance("SHA256withECDSA")
       signer.initSign(privateKey)
-      val msgToSign = getTransactionContentToSign(trx)
+      val msgToSign = encodeTransaction(trx)
       signer.update(msgToSign)
       return signer.sign()
     }
@@ -58,12 +60,37 @@ class CryptoUtil {
       val signer = Signature.getInstance("SHA256withECDSA")
       signer.initVerify(trx.publicKey)
 
-      signer.update(getTransactionContentToSign(trx))
+      signer.update(encodeTransaction(trx))
       return signer.verify(signature)
     }
 
-    private fun getTransactionContentToSign(
+    /**
+     * 运算区块的哈希值。
+     */
+    fun hashBlock(block: Block): ByteArray {
+      val digest = MessageDigest.getInstance("KECCAK-256", "SC")
+      digest.update(encodeBlock(block))
+      return digest.digest()
+    }
+
+    /**
+     * 序列化交易(Transaction)。当前实现非常简单，后期会改成以太坊的RLP协议。
+     */
+    private fun encodeTransaction(
         trx: Transaction) = (trx.senderAddress + trx.receiverAddress + trx.amount.toString() + trx.time.millis.toString()).toByteArray()
+
+    /**
+     * 序列化区块(Block)。当前实现非常简单，后期会改成以太坊的RLP协议。
+     */
+    private fun encodeBlock(block: Block): ByteArray {
+      val byteBuffer = ByteBuffer.allocate(1024)
+      byteBuffer.put(block.minerAddress.toByteArray())
+      byteBuffer.put(block.time.millis.toString().toByteArray())
+      block.transactions.map { byteBuffer.put(encodeTransaction(it)) }
+
+      byteBuffer.flip()
+      return byteBuffer.array()
+    }
 
   }
 

@@ -115,4 +115,41 @@ class BlockChainTest {
     assert(trx.isValid)
   }
 
+  /**
+   * 构造新的区块
+   */
+  @Test fun createBlockTest() {
+    // 初始化Alice账户
+    val kp1 = generateKeyPair() ?: return
+    val alice = Account(kp1.public)
+
+    // 初始化Bob账户
+    val kp2 = generateKeyPair() ?: return
+    val bob = Account(kp2.public)
+
+    // 初始金额为200
+    addAmount(alice.address, 200)
+    addAmount(bob.address, 200)
+
+    // Alice向Bob转账100
+    val trx = Transaction(alice.address, bob.address, 100, DateTime(), kp1.public)
+    // Alice用私钥签名
+    trx.sign(kp1.private)
+
+    // 初始化矿工Charlie账户
+    val kp3 = generateKeyPair() ?: return
+    val charlie = Account(kp3.public)
+
+    // 构造原始区块(高度为0)
+    val genesisBlock = Block(0, ByteArray(0), "1234567890123456789012345678901234567890", emptyList(), DateTime(2017,2,1,0,0))
+
+    // 构造新的区块
+    val blockChain = BlockChain(charlie.address)
+    blockChain.createNewBlock(genesisBlock, listOf(trx))
+
+    // 查询余额是否正确
+    assert(alice.balance == 100L)
+    assert(bob.balance == 300L)
+  }
+
 }
