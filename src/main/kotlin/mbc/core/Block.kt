@@ -9,6 +9,15 @@ import org.joda.time.DateTime
 class Block(val height: Long, val parentHash: ByteArray, val minerAddress: String, val transactions: List<Transaction>,
             val time: DateTime) {
 
+  val version: Int = 1
+
+  val merkleRoot: ByteArray
+    get() = CryptoUtil.merkleRoot(transactions)
+
+  var difficulty: Int = 0
+
+  var nonce: Int = 0
+
   /**
    * 区块(Block)的哈希值(KECCAK-256)
    */

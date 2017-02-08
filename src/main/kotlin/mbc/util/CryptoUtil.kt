@@ -8,6 +8,7 @@ import java.nio.ByteBuffer
 import java.security.*
 import java.security.Security.insertProviderAt
 import java.security.spec.ECGenParameterSpec
+import java.util.*
 
 /**
  * 密码学工具类。
@@ -77,19 +78,71 @@ class CryptoUtil {
      * 序列化交易(Transaction)。当前实现非常简单，后期会改成以太坊的RLP协议。
      */
     private fun encodeTransaction(
-        trx: Transaction) = (trx.senderAddress + trx.receiverAddress + trx.amount.toString() + trx.time.millis.toString()).toByteArray()
+        trx: Transaction): ByteArray {
+      val byteBuffer = ByteBuffer.allocate(1024)
+      byteBuffer.put(Hex.decode(trx.senderAddress))
+      byteBuffer.put(Hex.decode(trx.receiverAddress))
+      byteBuffer.put(ByteBuffer.allocate(8).putLong(trx.amount).array())
+      byteBuffer.put(ByteBuffer.allocate(4).putInt((trx.time.millis / 1000).toInt()).array())
+
+      val result = ByteArray(byteBuffer.remaining())
+      byteBuffer.get(result, 0, result.size)
+      return result
+    }
 
     /**
      * 序列化区块(Block)。当前实现非常简单，后期会改成以太坊的RLP协议。
      */
     private fun encodeBlock(block: Block): ByteArray {
       val byteBuffer = ByteBuffer.allocate(1024)
-      byteBuffer.put(block.minerAddress.toByteArray())
-      byteBuffer.put(block.time.millis.toString().toByteArray())
-      block.transactions.map { byteBuffer.put(encodeTransaction(it)) }
+      byteBuffer.put(ByteBuffer.allocate(4).putInt(block.version).array()) // version
+      byteBuffer.put(Hex.decode(block.parentHash)) // parentHash
+      byteBuffer.put(Hex.decode(block.merkleRoot)) // merkleRoot
+      byteBuffer.put(ByteBuffer.allocate(4).putInt((block.time.millis / 1000).toInt()).array()) // time
+      byteBuffer.put(ByteBuffer.allocate(4).putInt(block.difficulty).array()) // bits(current difficulty)
+      byteBuffer.put(ByteBuffer.allocate(4).putInt(block.nonce).array()) // nonce
+
+      byteBuffer.put(ByteBuffer.allocate(4).putInt(block.transactions.size).array()) // transaction count
+
+      block.transactions.map { byteBuffer.put(encodeTransaction(it)) } // transactions
 
       byteBuffer.flip()
       return byteBuffer.array()
+    }
+
+    /**
+     * 计算Merkle Root Hash
+     */
+    fun merkleRoot(transactions: List<Transaction>): ByteArray {
+      val count = transactions.size
+      if (count == 0) {
+        return ByteArray(0)
+      } else if (count == 1) {
+        return sha256(sha256(
+            encodeTransaction(transactions[0]) + encodeTransaction(transactions[0]))) // Double hash if we are leaf.
+      } else if (count == 2) {
+        return sha256(sha256(
+            encodeTransaction(transactions[0]) + encodeTransaction(transactions[1]))) // Double hash if we are leaf.
+      } else {
+        if (count.mod(2) == 1) {
+          val newList = transactions.toMutableList();
+          newList.add(transactions.last())
+          return merkleRoot(newList)
+        } else {
+          return merkleRoot(transactions)
+        }
+      }
+    }
+
+    /**
+     * SHA-256预算
+     */
+    fun sha256(msg: ByteArray): ByteArray {
+      val digest = MessageDigest.getInstance("SHA-256", "SC")
+      digest.update(msg)
+      val hash = digest.digest()
+
+      return hash
     }
 
   }
