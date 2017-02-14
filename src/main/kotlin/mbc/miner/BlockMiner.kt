@@ -20,7 +20,7 @@ object BlockMiner {
     val ver = block.version
     val parentHash = block.parentHash
     val merkleRoot = block.merkleRoot
-    val time = (block.time.millis/1000).toInt() // Current timestamp as seconds since 1970-01-01T00:00 UTC
+    val time = (block.time.millis / 1000).toInt() // Current timestamp as seconds since 1970-01-01T00:00 UTC
     val difficulty = currentDifficulty // difficulty
 
     // 挖矿难度的算法：https://en.bitcoin.it/wiki/Difficulty

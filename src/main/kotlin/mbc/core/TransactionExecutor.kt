@@ -1,5 +1,8 @@
 package mbc.core
 
+import mbc.storage.Repository
+import java.math.BigInteger
+
 /**
  * 交易处理并更新账户状态。
  */
@@ -8,19 +11,30 @@ object TransactionExecutor {
   /**
    * 增加账户余额(balance)，如果amount为负数则余额减少。
    */
-  fun addAmount(address: String, amount: Long) {
-    val newBalance = AccountState.getAccountBalance(address) + amount
-    AccountState.setAccountBalance(address, newBalance)
+  fun addBalance(address: ByteArray, amount: BigInteger) {
+    Repository.addBalance(address, amount)
+  }
+
+  /**
+   * 转账功能，发送方减少金额，接收方增加金额。
+   */
+  fun transfer(fromAddress: ByteArray, toAddress: ByteArray, amount: BigInteger) {
+    addBalance(fromAddress, amount.negate())
+    addBalance(toAddress, amount)
   }
 
   /**
    * 根据交易记录更新区块链的状态(state)，发送方的余额会减少，接收方的余额会增加。
    * 区块链的状态更新应该是原子操作，持久层是数据库可以使用事务功能。
    */
-  fun applyTrx(trx: Transaction) {
+  fun execute(trx: Transaction) {
     if (trx.isValid) {
-      addAmount(trx.senderAddress, -trx.amount)
-      addAmount(trx.receiverAddress, +trx.amount)
+
+      // 发送方的Nonce+1
+      Repository.increaseNonce(trx.senderAddress)
+
+      // 执行转账
+      transfer(trx.senderAddress, trx.receiverAddress, trx.amount)
     } else {
       throw IllegalTransactionException()
     }

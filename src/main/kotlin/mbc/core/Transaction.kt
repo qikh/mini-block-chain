@@ -1,16 +1,19 @@
 package mbc.core
 
+import mbc.util.CodecUtil
 import mbc.util.CryptoUtil
 import org.joda.time.DateTime
+import java.math.BigInteger
 import java.security.PrivateKey
 import java.security.PublicKey
+import java.util.*
 
 /**
  * 交易记录类：记录了发送方(sender)向接受方(receiver)的转账记录，包括金额(amount)和时间戳(time)。
  * 为简化模型，没有加入费用(fee)。
  */
-class Transaction(val senderAddress: String, val receiverAddress: String, val amount: Long,
-                       val time: DateTime, val publicKey: PublicKey) {
+class Transaction(val senderAddress: ByteArray, val receiverAddress: ByteArray, val amount: BigInteger,
+                  val time: DateTime, val publicKey: PublicKey) {
 
   /**
    * 签名数据，初始值为byte[0]
@@ -31,4 +34,21 @@ class Transaction(val senderAddress: String, val receiverAddress: String, val am
     return signature
   }
 
+  fun encode(): ByteArray {
+    return CodecUtil.encodeTransaction(this)
+  }
+
+  override fun equals(o: Any?): Boolean {
+    if (o is Transaction) {
+      if (!Arrays.equals(this.senderAddress, o.senderAddress)) return false
+      if (!Arrays.equals(this.receiverAddress, o.receiverAddress)) return false
+      if (this.amount != o.amount) return false
+      if (this.time != o.time) return false
+      if (this.publicKey != o.publicKey) return false
+
+      return true
+    } else {
+      return false
+    }
+  }
 }

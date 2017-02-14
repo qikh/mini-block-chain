@@ -1,15 +1,21 @@
 package mbc.core
 
-import mbc.core.TransactionExecutor.addAmount
-import mbc.core.TransactionExecutor.applyTrx
+import junit.framework.Assert.assertTrue
+import mbc.config.BlockChainConfig
+import mbc.core.TransactionExecutor.addBalance
+import mbc.core.TransactionExecutor.execute
 import mbc.miner.BlockMiner
+import mbc.util.CodecUtil
 import mbc.util.CryptoUtil
 import mbc.util.CryptoUtil.Companion.generateKeyPair
 import mbc.util.CryptoUtil.Companion.sha256
 import mbc.util.CryptoUtil.Companion.verifyTransactionSignature
 import org.joda.time.DateTime
+import org.junit.Assert.assertArrayEquals
 import org.junit.Before
 import org.junit.Test
+import org.spongycastle.asn1.ASN1InputStream
+import org.spongycastle.asn1.util.ASN1Dump
 import org.spongycastle.jce.provider.BouncyCastleProvider
 import org.spongycastle.util.encoders.Hex
 import java.math.BigInteger
@@ -23,6 +29,13 @@ import kotlin.test.assertNotEquals
 
 
 class BlockChainTest {
+
+  val version = 1
+
+  val genesisBlock = Block(1, 0, ByteArray(0), CryptoUtil.merkleRoot(emptyList()),
+                           Hex.decode("1234567890123456789012345678901234567890"), emptyList(),
+                           DateTime(2017, 2, 1, 0, 0), 0, 0)
+
   @Before fun setup() {
     Security.insertProviderAt(BouncyCastleProvider(), 1)
   }
@@ -34,7 +47,7 @@ class BlockChainTest {
     val keyPair = generateKeyPair() ?: return
 
     val account = Account(keyPair.public)
-    assert(account.address.length == 40)
+    assert(account.address.size == 20)
   }
 
   /**
@@ -50,20 +63,20 @@ class BlockChainTest {
     val bob = Account(kp2.public)
 
     // 初始金额为200
-    addAmount(alice.address, 200)
-    addAmount(bob.address, 200)
+    addBalance(alice.address, BigInteger.valueOf(200))
+    addBalance(bob.address, BigInteger.valueOf(200))
 
     // Alice向Bob转账100
-    val trx = Transaction(alice.address, bob.address, 100, DateTime(), kp1.public)
+    val trx = Transaction(alice.address, bob.address, BigInteger.valueOf(100), DateTime(), kp1.public)
     // Alice用私钥签名
     trx.sign(kp1.private)
 
     // 根据交易记录更新区块链状态
-    applyTrx(trx)
+    execute(trx)
 
     // 查询余额是否正确
-    assert(alice.balance == 100L)
-    assert(bob.balance == 300L)
+    assert(alice.balance == BigInteger.valueOf(100))
+    assert(bob.balance == BigInteger.valueOf(300))
   }
 
   /**
@@ -109,7 +122,7 @@ class BlockChainTest {
     val bob = Account(kp2.public)
 
     // Alice向Bob转账100
-    val trx = Transaction(alice.address, bob.address, 100, DateTime(), kp1.public)
+    val trx = Transaction(alice.address, bob.address, BigInteger.valueOf(100), DateTime(), kp1.public)
 
     // Alice用私钥签名
     val signature = trx.sign(kp1.private)
@@ -134,11 +147,11 @@ class BlockChainTest {
     val bob = Account(kp2.public)
 
     // 初始金额为200
-    addAmount(alice.address, 200)
-    addAmount(bob.address, 200)
+    addBalance(alice.address, BigInteger.valueOf(200))
+    addBalance(bob.address, BigInteger.valueOf(200))
 
     // Alice向Bob转账100
-    val trx = Transaction(alice.address, bob.address, 100, DateTime(), kp1.public)
+    val trx = Transaction(alice.address, bob.address, BigInteger.valueOf(100), DateTime(), kp1.public)
     // Alice用私钥签名
     trx.sign(kp1.private)
 
@@ -146,17 +159,14 @@ class BlockChainTest {
     val kp3 = generateKeyPair() ?: return
     val charlie = Account(kp3.public)
 
-    // 构造原始区块(高度为0)
-    val genesisBlock = Block(0, ByteArray(0), "1234567890123456789012345678901234567890", emptyList(),
-                             DateTime(2017, 2, 1, 0, 0))
-
     // 构造新的区块
-    val blockChain = BlockChain(charlie.address)
-    blockChain.createNewBlock(genesisBlock, listOf(trx))
+    BlockChainConfig.setMinerCoinbase(charlie.address)
+    val blockChain = BlockChain()
+    blockChain.createNewBlock(version, genesisBlock, listOf(trx))
 
     // 查询余额是否正确
-    assert(alice.balance == 100L)
-    assert(bob.balance == 300L)
+    assert(alice.balance == BigInteger.valueOf(100))
+    assert(bob.balance == BigInteger.valueOf(300))
   }
 
   /**
@@ -179,7 +189,7 @@ class BlockChainTest {
     var nonce = 0
     while (nonce < 0x100000000) {
 
-      val headerBuffer = ByteBuffer.allocate(4+32+32+4+4+4)
+      val headerBuffer = ByteBuffer.allocate(4 + 32 + 32 + 4 + 4 + 4)
       headerBuffer.put(ByteBuffer.allocate(4).putInt(ver).array()) // version
       headerBuffer.put(Hex.decode(parentHash)) // parentHash
       headerBuffer.put(Hex.decode(merkleRoot)) // merkleRoot
@@ -221,13 +231,13 @@ class BlockChainTest {
     val bob = Account(kp2.public)
 
     // Alice向Bob转账100
-    val trx1 = Transaction(alice.address, bob.address, 100, DateTime(), kp1.public)
+    val trx1 = Transaction(alice.address, bob.address, BigInteger.valueOf(100), DateTime(), kp1.public)
 
     // Alice用私钥签名
     val signature = trx1.sign(kp1.private)
 
     // Alice向Bob转账50
-    val trx2 = Transaction(alice.address, bob.address, 50, DateTime(), kp1.public)
+    val trx2 = Transaction(alice.address, bob.address, BigInteger.valueOf(50), DateTime(), kp1.public)
 
     // Alice用私钥签名
     val signature2 = trx2.sign(kp1.private)
@@ -237,7 +247,7 @@ class BlockChainTest {
   }
 
   /**
-   * 挖矿
+   * 挖矿测试
    */
   @Test fun mineBlockTest() {
     // 初始化Alice账户
@@ -249,11 +259,11 @@ class BlockChainTest {
     val bob = Account(kp2.public)
 
     // 初始金额为200
-    addAmount(alice.address, 200)
-    addAmount(bob.address, 200)
+    addBalance(alice.address, BigInteger.valueOf(200))
+    addBalance(bob.address, BigInteger.valueOf(200))
 
     // Alice向Bob转账100
-    val trx = Transaction(alice.address, bob.address, 100, DateTime(), kp1.public)
+    val trx = Transaction(alice.address, bob.address, BigInteger.valueOf(100), DateTime(), kp1.public)
     // Alice用私钥签名
     trx.sign(kp1.private)
 
@@ -261,25 +271,123 @@ class BlockChainTest {
     val kp3 = generateKeyPair() ?: return
     val charlie = Account(kp3.public)
 
-    // 构造原始区块(高度为0)
-    val genesisBlock = Block(0, ByteArray(0), "1234567890123456789012345678901234567890", emptyList(),
-                             DateTime(2017, 2, 1, 0, 0))
-
     // 构造新的区块
-    val blockChain = BlockChain(charlie.address)
-    val block = blockChain.createNewBlock(genesisBlock, listOf(trx))
+    BlockChainConfig.setMinerCoinbase(charlie.address)
+    val blockChain = BlockChain()
+    val block = blockChain.createNewBlock(version, genesisBlock, listOf(trx))
 
     // 查询余额是否正确
-    assert(alice.balance == 100L)
-    assert(bob.balance == 300L)
+    assert(alice.balance == BigInteger.valueOf(100))
+    assert(bob.balance == BigInteger.valueOf(300))
 
     val mineResult = BlockMiner.mine(block)
-    block.difficulty = mineResult.target
-    block.nonce = mineResult.nonce
+    val minedBlock = Block(block.version, block.height, block.parentHash, block.merkleRoot, block.coinBase,
+                           block.transactions, block.time, mineResult.difficulty, mineResult.nonce)
 
-    println("Block nonce: ${block.nonce}")
-    assertNotEquals(block.difficulty, 0)
-    assertNotEquals(block.nonce, 0)
+    println("Block nonce: ${minedBlock.nonce}")
+    assertNotEquals(minedBlock.difficulty, 0)
+    assertNotEquals(minedBlock.nonce, 0)
   }
 
+  /**
+   * 账户状态序列化/反序列化测试。
+   */
+  @Test fun accountStateEncodeTest() {
+    val accountState = AccountState(BigInteger.TEN, BigInteger.TEN)
+
+    println(ASN1Dump.dumpAsString(ASN1InputStream(accountState.encode()).readObject()))
+
+    val decoded = CodecUtil.decodeAccountState(accountState.encode())
+
+    assertEquals(accountState.nonce, decoded?.nonce)
+    assertEquals(accountState.balance, decoded?.balance)
+  }
+
+  /**
+   * 交易Transaction序列化/反序列化测试。
+   */
+  @Test fun transactionEncodeTest() {
+    // 初始化Alice账户
+    val kp1 = generateKeyPair() ?: return
+    val alice = Account(kp1.public)
+
+    // 初始化Bob账户
+    val kp2 = generateKeyPair() ?: return
+    val bob = Account(kp2.public)
+
+    // 初始金额为200
+    addBalance(alice.address, BigInteger.valueOf(200))
+    addBalance(bob.address, BigInteger.valueOf(200))
+
+    // Alice向Bob转账100
+    val trx = Transaction(alice.address, bob.address, BigInteger.valueOf(100), DateTime(), kp1.public)
+    // Alice用私钥签名
+    trx.sign(kp1.private)
+
+    println(ASN1Dump.dumpAsString(ASN1InputStream(trx.encode()).readObject()))
+
+    val decoded = CodecUtil.decodeTransaction(trx.encode())
+
+    if (decoded == null) {
+      return
+    }
+
+    assertArrayEquals(trx.senderAddress, decoded.senderAddress)
+    assertArrayEquals(trx.receiverAddress, decoded.receiverAddress)
+    assertEquals(trx.amount, decoded.amount)
+    assertEquals(trx.time.millis, decoded.time.millis)
+    assertEquals(trx.publicKey, decoded.publicKey)
+  }
+
+  /**
+   * 区块Block序列化/反序列化测试。
+   */
+  @Test fun blockEncodeTest() {
+    // 初始化Alice账户
+    val kp1 = generateKeyPair() ?: return
+    val alice = Account(kp1.public)
+
+    // 初始化Bob账户
+    val kp2 = generateKeyPair() ?: return
+    val bob = Account(kp2.public)
+
+    // 初始金额为200
+    addBalance(alice.address, BigInteger.valueOf(200))
+    addBalance(bob.address, BigInteger.valueOf(200))
+
+    // Alice向Bob转账100
+    val trx1 = Transaction(alice.address, bob.address, BigInteger.valueOf(100), DateTime(), kp1.public)
+
+    // Alice用私钥签名
+    val signature = trx1.sign(kp1.private)
+
+    // Alice向Bob转账50
+    val trx2 = Transaction(alice.address, bob.address, BigInteger.valueOf(50), DateTime(), kp1.public)
+
+    // Alice用私钥签名
+    val signature2 = trx2.sign(kp1.private)
+
+    // 初始化矿工Charlie账户
+    val kp3 = generateKeyPair() ?: return
+    val charlie = Account(kp3.public)
+
+    // 构造新的区块
+    BlockChainConfig.setMinerCoinbase(charlie.address)
+    val blockChain = BlockChain()
+    val block = blockChain.createNewBlock(version, genesisBlock, listOf(trx1, trx2))
+
+    println(ASN1Dump.dumpAsString(ASN1InputStream(block.encode()).readObject()))
+
+    val decoded = CodecUtil.decodeBlock(block.encode()) ?: return
+
+    assertEquals(block.version, decoded.version)
+    assertEquals(block.height, decoded.height)
+    assertArrayEquals(block.parentHash, decoded.parentHash)
+    assertArrayEquals(block.merkleRoot, decoded.merkleRoot)
+    assertArrayEquals(block.coinBase, decoded.coinBase)
+    assertArrayEquals(block.transactions.toTypedArray(), decoded.transactions.toTypedArray())
+    assertEquals(block.time, decoded.time)
+    assertEquals(block.difficulty, decoded.difficulty)
+    assertEquals(block.nonce, decoded.nonce)
+  }
 }

@@ -1,6 +1,8 @@
 package mbc.core
 
+import mbc.storage.Repository
 import mbc.util.CryptoUtil
+import java.math.BigInteger
 import java.security.PublicKey
 
 /**
@@ -9,10 +11,10 @@ import java.security.PublicKey
  * 账户地址(address)可以由公钥运算推导，比特币和以太坊均采用了类似机制。
  * 账户余额(balance)通常会保存在文件或数据库内。
  */
-data class Account(val publicKey: PublicKey) {
-  val address: String
+class Account(val publicKey: PublicKey) {
+  val address: ByteArray
     get() = CryptoUtil.generateAddress(publicKey)
 
-  val balance: Long
-    get() = AccountState.getAccountBalance(address)
+  val balance: BigInteger
+    get() = Repository.getBalance(address)
 }
