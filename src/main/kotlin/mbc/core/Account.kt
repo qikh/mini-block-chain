@@ -1,8 +1,6 @@
 package mbc.core
 
-import mbc.storage.Repository
 import mbc.util.CryptoUtil
-import java.math.BigInteger
 import java.security.PublicKey
 
 /**
@@ -14,7 +12,4 @@ import java.security.PublicKey
 class Account(val publicKey: PublicKey) {
   val address: ByteArray
     get() = CryptoUtil.generateAddress(publicKey)
-
-  val balance: BigInteger
-    get() = Repository.getBalance(address)
 }

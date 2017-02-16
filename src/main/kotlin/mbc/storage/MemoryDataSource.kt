@@ -5,9 +5,7 @@ import org.spongycastle.util.encoders.Hex
 /**
  * 内存数据源实现。
  */
-class MemoryDataSource(dbName: String) : DataSource<ByteArray, ByteArray> {
-
-  override val name = dbName
+class MemoryDataSource(override val name: String) : DataSource<ByteArray, ByteArray> {
 
   val db = mutableMapOf<String, ByteArray>()
 
@@ -46,6 +44,10 @@ class MemoryDataSource(dbName: String) : DataSource<ByteArray, ByteArray> {
     val result = mutableSetOf<ByteArray>()
     stringKeys.map { result.add(Hex.decode(it)) }
     return result
+  }
+
+  override fun reset() {
+
   }
 
 }

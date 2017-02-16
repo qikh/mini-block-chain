@@ -3,8 +3,11 @@ package mbc.util
 import mbc.core.AccountState
 import mbc.core.Block
 import mbc.core.Transaction
+import mbc.storage.BlockInfo
 import org.joda.time.DateTime
 import org.spongycastle.asn1.*
+import java.math.BigInteger
+import java.nio.ByteBuffer
 import java.security.KeyFactory
 import java.security.spec.X509EncodedKeySpec
 
@@ -44,7 +47,16 @@ object CodecUtil {
   /**
    * 序列化交易(Transaction)。(使用ASN.1规范)
    */
-  fun encodeTransaction(trx: Transaction): ByteArray {
+  fun encodeTransaction(transaction: Transaction): ByteArray {
+    return encodeTransactionToAsn1(transaction).encoded
+  }
+
+  /**
+   * Transaction => ASN1结构
+   *
+   * 注意：不要包含Signature
+   */
+  fun encodeTransactionToAsn1(trx: Transaction): DERSequence {
     val v = ASN1EncodableVector()
 
     v.add(DERBitString(trx.senderAddress))
@@ -52,39 +64,69 @@ object CodecUtil {
     v.add(ASN1Integer(trx.amount))
     v.add(ASN1Integer(trx.time.millis))
     v.add(DERBitString(trx.publicKey.encoded))
+    v.add(DERBitString(trx.signature))
 
-    return DERSequence(v).encoded
+    return DERSequence(v)
+  }
+
+  fun encodeTransactionWithoutSignatureToAsn1(trx: Transaction): DERSequence {
+    val v = ASN1EncodableVector()
+
+    v.add(DERBitString(trx.senderAddress))
+    v.add(DERBitString(trx.receiverAddress))
+    v.add(ASN1Integer(trx.amount))
+    v.add(ASN1Integer(trx.time.millis))
+    v.add(DERBitString(trx.publicKey.encoded))
+    // 不要包含Signature
+
+    return DERSequence(v)
   }
 
   /**
    * 反序列化交易(Transaction)。(使用ASN.1规范)
    */
   fun decodeTransaction(bytes: ByteArray): Transaction? {
-    val v = ASN1InputStream(bytes)?.readObject()
+    val v = ASN1InputStream(bytes).readObject()
 
     if (v != null) {
       val seq = ASN1Sequence.getInstance(v)
-      val senderAddress = DERBitString.getInstance(seq.getObjectAt(0))?.bytes
-      val receiverAddress = DERBitString.getInstance(seq.getObjectAt(1))?.bytes
-      val amount = ASN1Integer.getInstance(seq.getObjectAt(2))?.value
-      val millis = ASN1Integer.getInstance(seq.getObjectAt(3))?.value
-      val publicKeyBytes = DERBitString.getInstance(seq.getObjectAt(4))?.bytes
-
-      val kf = KeyFactory.getInstance("EC", "SC")
-      val publicKey = kf.generatePublic(X509EncodedKeySpec(publicKeyBytes))
-
-      if (senderAddress != null && receiverAddress != null && amount != null && millis != null) {
-        return Transaction(senderAddress, receiverAddress, amount, DateTime(millis.toLong()), publicKey)
-      }
+      return decodeTransactionFromSeq(seq)
     }
 
     return null
   }
 
   /**
+   * ASN1Sequence => Transaction
+   */
+  fun decodeTransactionFromSeq(seq: ASN1Sequence): Transaction? {
+    val senderAddress = DERBitString.getInstance(seq.getObjectAt(0))?.bytes
+    val receiverAddress = DERBitString.getInstance(seq.getObjectAt(1))?.bytes
+    val amount = ASN1Integer.getInstance(seq.getObjectAt(2))?.value
+    val millis = ASN1Integer.getInstance(seq.getObjectAt(3))?.value
+    val publicKeyBytes = DERBitString.getInstance(seq.getObjectAt(4))?.bytes
+    val signature = DERBitString.getInstance(seq.getObjectAt(5))?.bytes
+
+    if (senderAddress != null && receiverAddress != null && amount != null && millis != null &&
+        publicKeyBytes != null && signature != null) {
+      val kf = KeyFactory.getInstance("EC", "SC")
+      val publicKey = kf.generatePublic(X509EncodedKeySpec(publicKeyBytes))
+
+      return Transaction(senderAddress, receiverAddress, amount, DateTime(millis.toLong()), publicKey, signature)
+    } else {
+      return null
+    }
+  }
+
+  /**
    * 序列化区块(Block)。(使用ASN.1规范)
    */
   fun encodeBlock(block: Block): ByteArray {
+
+    return encodeBlockToAsn1(block).encoded
+  }
+
+  fun encodeBlockToAsn1(block: Block): DERSequence {
 
     val v = ASN1EncodableVector()
 
@@ -96,14 +138,15 @@ object CodecUtil {
     v.add(ASN1Integer(block.difficulty.toLong()))
     v.add(ASN1Integer(block.nonce.toLong()))
     v.add(ASN1Integer(block.time.millis))
+    v.add(ASN1Integer(block.totalDifficulty))
 
     v.add(ASN1Integer(block.transactions.size.toLong()))
 
     val t = ASN1EncodableVector()
-    block.transactions.map { t.add(ASN1InputStream(encodeTransaction(it)).readObject()) } // transactions
+    block.transactions.forEach { t.add(encodeTransactionToAsn1(it)) } // transactions
     v.add(DERSequence(t))
 
-    return DERSequence(v).encoded
+    return DERSequence(v)
   }
 
   /**
@@ -122,10 +165,11 @@ object CodecUtil {
       val difficulty = ASN1Integer.getInstance(seq.getObjectAt(5))?.value
       val nonce = ASN1Integer.getInstance(seq.getObjectAt(6))?.value
       val millis = ASN1Integer.getInstance(seq.getObjectAt(7))?.value
+      val totalDifficulty = ASN1Integer.getInstance(seq.getObjectAt(8))?.value ?: BigInteger.ZERO
 
-      val trxSize = ASN1Integer.getInstance(seq.getObjectAt(8))?.value
+      val trxSize = ASN1Integer.getInstance(seq.getObjectAt(9))?.value
 
-      val trxValues = ASN1Sequence.getInstance(seq.getObjectAt(9))
+      val trxValues = ASN1Sequence.getInstance(seq.getObjectAt(10))
 
       val trxList = mutableListOf<Transaction>()
 
@@ -136,15 +180,80 @@ object CodecUtil {
       }
 
       if (version == null || height == null || parentHash == null || minerAddress == null ||
-          merkleRoot == null || difficulty == null || nonce == null || millis == null) {
+          merkleRoot == null || difficulty == null || nonce == null || millis == null || totalDifficulty == null ||
+          trxSize == null || trxSize.toInt() != trxList.size) {
         return null
       }
 
-      return Block(version.toInt(), height.toLong(), parentHash, CryptoUtil.merkleRoot(trxList), minerAddress, trxList,
-                   DateTime(millis.toLong()), difficulty.toInt(), nonce.toInt())
+      return Block(version.toInt(), height.toLong(), parentHash, CryptoUtil.merkleRoot(trxList), minerAddress,
+                   DateTime(millis.toLong()), difficulty.toInt(), nonce.toInt(), totalDifficulty, trxList)
     }
 
     return null
+  }
+
+  /**
+   * 序列化区块信息(BlockInfo)。(使用ASN.1规范)
+   */
+  fun encodeBlockInfos(blocks: List<BlockInfo>): ByteArray {
+
+    val v = ASN1EncodableVector()
+
+    blocks.map {
+      val t = ASN1EncodableVector()
+      t.add(DERBitString(it.hash))
+      t.add(ASN1Boolean.getInstance(it.isMain))
+      t.add(ASN1Integer(it.totalDifficulty))
+
+      v.add(DERSequence(t))
+    }
+
+    return DERSequence(v).encoded
+  }
+
+  /**
+   * 反序列化区块信息(BlockInfo)。(使用ASN.1规范)
+   */
+  fun decodeBlockInfos(bytes: ByteArray): List<BlockInfo>? {
+    val v = ASN1InputStream(bytes).readObject()
+
+    val result = mutableListOf<BlockInfo>()
+    if (v != null) {
+      val seq = ASN1Sequence.getInstance(v)
+
+      for (blockInfoInAsn1 in seq.objects) {
+        val blockInfoInSeq = DERSequence.getInstance(blockInfoInAsn1)
+        if (blockInfoInSeq != null) {
+          val hash = DERBitString.getInstance(blockInfoInSeq.getObjectAt(0))?.bytes
+          val isMain = ASN1Boolean.getInstance(blockInfoInSeq.getObjectAt(1))?.isTrue
+          val totalDifficulty = ASN1Integer.getInstance(blockInfoInSeq.getObjectAt(2))?.value ?: BigInteger.ZERO
+
+          if (hash == null || totalDifficulty == null || isMain == null) {
+            return null
+          }
+
+          result.add(BlockInfo(hash, isMain, totalDifficulty))
+        }
+      }
+    }
+
+    return null
+  }
+
+  fun intToByteArray(i: Int): ByteArray {
+    return ByteBuffer.allocate(4).putInt(i).array()
+  }
+
+  fun longToByteArray(i: Long): ByteArray {
+    return ByteBuffer.allocate(8).putLong(i).array()
+  }
+
+  fun byteArrayToInt(b: ByteArray): Int {
+    if (b == null || b.size == 0) {
+      return 0
+    }
+
+    return BigInteger(b).toInt()
   }
 
 }

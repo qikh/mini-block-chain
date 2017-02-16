@@ -2,6 +2,8 @@ package mbc.miner
 
 import mbc.core.Block
 import mbc.util.CryptoUtil
+import org.joda.time.DateTime
+import org.slf4j.LoggerFactory
 import org.spongycastle.util.encoders.Hex
 import java.math.BigInteger
 import java.nio.ByteBuffer
@@ -11,12 +13,22 @@ import java.nio.ByteBuffer
  * 挖矿的管理类，算法可以参照https://en.bitcoin.it/wiki/Block_hashing_algorithm。
  */
 object BlockMiner {
-  var currentDifficulty = 0x1f00ffff // 比特币的最小(初始)难度为0x1d00ffff，为测试方便我们降低难度为0x1f00ffff
+  private val logger = LoggerFactory.getLogger(BlockMiner.javaClass)
+
+  var mining = false
+
+  var currentDifficulty = 0x1e00ffff // 比特币的最小(初始)难度为0x1d00ffff，为测试方便我们降低难度为0x1e00ffff
 
   /**
    * 挖矿，返回nonce值和target值。目前采用阻塞模型，后期修改为更合理的异步模型。
    */
   fun mine(block: Block): MineResult {
+    logger.debug("Start mining block ...")
+
+    mining = true
+
+    val startTime = System.currentTimeMillis()
+
     val ver = block.version
     val parentHash = block.parentHash
     val merkleRoot = block.merkleRoot
@@ -30,7 +42,7 @@ object BlockMiner {
     val targetStr = "%064x".format(target)
 
     var nonce = 0
-    while (nonce < 0x100000000) {
+    while (mining && nonce < 0x100000000) {
 
       val headerBuffer = ByteBuffer.allocate(4 + 32 + 32 + 4 + 4 + 4)
       headerBuffer.put(ByteBuffer.allocate(4).putInt(ver).array()) // version
@@ -49,7 +61,24 @@ object BlockMiner {
       nonce += 1
     }
 
-    val result = MineResult(currentDifficulty, nonce)
+    val endTime = System.currentTimeMillis()
+
+    val interval = (endTime - startTime) / 1000
+
+    logger.debug("Mining block finished in $interval seconds.")
+
+    val totalDifficulty = block.totalDifficulty + BigInteger.valueOf(difficulty.toLong())
+
+    val newBlock = Block(block.version, block.height, block.parentHash, block.merkleRoot, block.coinBase,
+                         DateTime(), difficulty, nonce, totalDifficulty, block.transactions)
+    val result = MineResult(difficulty, nonce, newBlock)
+
+    mining = false
+
     return result
+  }
+
+  fun stop() {
+    mining = false
   }
 }

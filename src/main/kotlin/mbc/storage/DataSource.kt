@@ -49,11 +49,16 @@ interface DataSource<K, V> {
   /**
    * 批量写入Key-Value。
    */
-  fun updateBatch(rows: Map<K, V>)
+  fun updateBatch(rows: Map<ByteArray, V>)
 
   /**
    * @return 数据库的Keys，如果不支持该操作返回Null
    */
   fun keys(): Set<K>
+
+  /**
+   * @return 数据库的Keys，如果不支持该操作返回Null
+   */
+  fun reset()
 
 }

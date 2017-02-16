@@ -1,6 +1,5 @@
 package mbc.storage
 
-import mbc.config.BlockChainConfig
 import org.iq80.leveldb.CompressionType
 import org.iq80.leveldb.DB
 import org.iq80.leveldb.Options
@@ -11,12 +10,10 @@ import java.util.*
 /**
  * 内存数据源实现。
  */
-class LevelDbDataSource(dbName: String) : DataSource<ByteArray, ByteArray> {
+class LevelDbDataSource(override val name: String, val databaseDir: String) : DataSource<ByteArray, ByteArray> {
 
   lateinit var db: DB
   var alive: Boolean = false
-
-  override val name = dbName
 
   override fun put(key: ByteArray, value: ByteArray) {
     db.put(key, value)
@@ -47,15 +44,15 @@ class LevelDbDataSource(dbName: String) : DataSource<ByteArray, ByteArray> {
     options.verifyChecksums(true)
     options.maxOpenFiles(32)
 
-    val databaseDir = File(BlockChainConfig.getDatabaseDir())
+    val databaseDir = File(databaseDir)
     if (!databaseDir.exists() || !databaseDir.isDirectory) {
       databaseDir.mkdirs()
-
-      val factory = Iq80DBFactory.factory
-      db = factory.open(File(databaseDir.absolutePath + File.separator + name), options)
-
-      alive = true
     }
+
+    val factory = Iq80DBFactory.factory
+    db = factory.open(File(databaseDir.absolutePath + File.separator + name), options)
+
+    alive = true
   }
 
   override fun isAlive(): Boolean {
@@ -67,8 +64,15 @@ class LevelDbDataSource(dbName: String) : DataSource<ByteArray, ByteArray> {
   }
 
   override fun updateBatch(rows: Map<ByteArray, ByteArray>) {
-    for ((key, value) in rows) {
-      put(key, value)
+    db.createWriteBatch().use { batch ->
+      for ((key, value) in rows) {
+        if (value == null) {
+          batch.delete(key)
+        } else {
+          batch.put(key, value)
+        }
+      }
+      db.write(batch)
     }
   }
 
@@ -82,6 +86,13 @@ class LevelDbDataSource(dbName: String) : DataSource<ByteArray, ByteArray> {
       }
       return result
     }
+  }
+
+  override fun reset() {
+    close()
+    val databaseDir = File(databaseDir)
+    databaseDir.deleteRecursively()
+    init()
   }
 
 }

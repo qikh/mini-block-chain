@@ -2,10 +2,18 @@ package mbc.util
 
 import mbc.core.Block
 import mbc.core.Transaction
+import org.spongycastle.crypto.params.ECDomainParameters
+import org.spongycastle.jcajce.provider.asymmetric.ec.BCECPrivateKey
+import org.spongycastle.jce.ECNamedCurveTable
 import org.spongycastle.jce.provider.BouncyCastleProvider
+import org.spongycastle.jce.spec.ECPublicKeySpec
 import java.security.*
 import java.security.Security.insertProviderAt
+import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
+import java.security.spec.PKCS8EncodedKeySpec
+import java.security.spec.X509EncodedKeySpec
+
 
 /**
  * 密码学工具类。
@@ -46,7 +54,7 @@ class CryptoUtil {
     fun signTransaction(trx: Transaction, privateKey: PrivateKey): ByteArray {
       val signer = Signature.getInstance("SHA256withECDSA")
       signer.initSign(privateKey)
-      val msgToSign = trx.encode()
+      val msgToSign = CodecUtil.encodeTransactionWithoutSignatureToAsn1(trx).encoded
       signer.update(msgToSign)
       return signer.sign()
     }
@@ -58,7 +66,7 @@ class CryptoUtil {
       val signer = Signature.getInstance("SHA256withECDSA")
       signer.initVerify(trx.publicKey)
 
-      signer.update(trx.encode())
+      signer.update(CodecUtil.encodeTransactionWithoutSignatureToAsn1(trx).encoded)
       return signer.verify(signature)
     }
 
@@ -80,9 +88,9 @@ class CryptoUtil {
       if (count == 0) {
         return ByteArray(0)
       } else if (count == 1) {
-        return sha256(sha256(transactions[0].encode() + transactions[0].encode())) // Double hash if we are leaf.
+        return sha256(sha256(transactions[0].encode() + transactions[0].encode())) // Double bestHash if we are leaf.
       } else if (count == 2) {
-        return sha256(sha256(transactions[0].encode() + transactions[1].encode())) // Double hash if we are leaf.
+        return sha256(sha256(transactions[0].encode() + transactions[1].encode())) // Double bestHash if we are leaf.
       } else {
         if (count.mod(2) == 1) {
           val newList = transactions.toMutableList();
@@ -105,6 +113,35 @@ class CryptoUtil {
       return hash
     }
 
+    fun deserializePrivateKey(bytes: ByteArray): PrivateKey {
+      val kf = KeyFactory.getInstance("EC", "SC")
+      return kf.generatePrivate(PKCS8EncodedKeySpec(bytes))
+    }
+
+    fun deserializePublicKey(bytes: ByteArray): PublicKey {
+      val kf = KeyFactory.getInstance("EC", "SC")
+      return kf.generatePublic(X509EncodedKeySpec(bytes))
+    }
+
+    /**
+     * 从PrivateKey计算出PublicKey，参考了以太坊的代码和http://stackoverflow.com/questions/26159149/how-can-i-default-a-publickey-object-from-ec-public-key-bytes
+     */
+    fun generatePublicKey(privateKey: PrivateKey): PublicKey? {
+      val spec = ECNamedCurveTable.getParameterSpec("secp256k1")
+      val kf = KeyFactory.getInstance("EC", "SC")
+
+      val curve = ECDomainParameters(spec.curve, spec.g, spec.n, spec.h)
+
+      if (privateKey is BCECPrivateKey) {
+        val d = privateKey.d
+        val point = curve.g.multiply(d)
+        val pubKeySpec = ECPublicKeySpec(point, spec)
+        val publicKey = kf.generatePublic(pubKeySpec) as ECPublicKey
+        return publicKey
+      } else {
+        return null
+      }
+    }
   }
 
 }

@@ -3,6 +3,7 @@ package mbc.serialization
 import mbc.core.AccountState
 import mbc.core.Block
 import mbc.core.Transaction
+import mbc.storage.BlockInfo
 import mbc.util.CodecUtil
 
 /**
@@ -51,6 +52,17 @@ class TransactionSerialize : Serializer<Transaction, ByteArray> {
 
   override fun serialize(obj: Transaction): ByteArray {
     return CodecUtil.encodeTransaction(obj)
+  }
+
+}
+
+class BlockInfosSerialize : Serializer<List<BlockInfo>, ByteArray> {
+  override fun deserialize(s: ByteArray): List<BlockInfo>? {
+    return CodecUtil.decodeBlockInfos(s)
+  }
+
+  override fun serialize(obj: List<BlockInfo>): ByteArray {
+    return CodecUtil.encodeBlockInfos(obj)
   }
 
 }

@@ -6,13 +6,13 @@ import java.math.BigInteger
 /**
  * 交易处理并更新账户状态。
  */
-object TransactionExecutor {
+class TransactionExecutor(val repository: Repository) {
 
   /**
    * 增加账户余额(balance)，如果amount为负数则余额减少。
    */
   fun addBalance(address: ByteArray, amount: BigInteger) {
-    Repository.addBalance(address, amount)
+    repository.addBalance(address, amount)
   }
 
   /**
@@ -31,7 +31,7 @@ object TransactionExecutor {
     if (trx.isValid) {
 
       // 发送方的Nonce+1
-      Repository.increaseNonce(trx.senderAddress)
+      repository.increaseNonce(trx.senderAddress)
 
       // 执行转账
       transfer(trx.senderAddress, trx.receiverAddress, trx.amount)
