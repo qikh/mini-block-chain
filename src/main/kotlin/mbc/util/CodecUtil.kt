@@ -256,4 +256,26 @@ object CodecUtil {
     return BigInteger(b).toInt()
   }
 
+  fun asn1Encode(v: Any): ASN1Object {
+    if (v is ByteArray) {
+      return DERBitString(v)
+    } else if (v is String) {
+      return DERUTF8String(v)
+    } else if (v is Int) {
+      return ASN1Integer(v.toLong())
+    } else if (v is Long) {
+      return ASN1Integer(v)
+    } else if (v is BigInteger) {
+      return ASN1Integer(v)
+    }  else if (v is Array<*>) {
+      val vec = ASN1EncodableVector()
+
+      v.forEach { vec.add(it?.let { asn1Encode(it) }) }
+
+      return DERSequence(vec)
+    } else {
+      throw Exception("Can not convert type ${v.javaClass} to ASN1 object.")
+    }
+  }
+
 }

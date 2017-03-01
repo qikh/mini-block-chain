@@ -103,7 +103,7 @@ class CryptoUtil {
     }
 
     /**
-     * SHA-256预算
+     * SHA-256
      */
     fun sha256(msg: ByteArray): ByteArray {
       val digest = MessageDigest.getInstance("SHA-256", "SC")
@@ -111,6 +111,13 @@ class CryptoUtil {
       val hash = digest.digest()
 
       return hash
+    }
+
+    /**
+     * SHA3
+     */
+    fun sha3(msg: ByteArray): ByteArray {
+      return sha256((msg))
     }
 
     fun deserializePrivateKey(bytes: ByteArray): PrivateKey {
