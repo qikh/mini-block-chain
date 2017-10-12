@@ -5,7 +5,9 @@ import mbc.serialization.Serializer
 /**
  * 对象存储类，可以接入不同的DbSource(Memory, LevelDb)和Serializer(AccountState, Transaction, Block)实现。
  */
-class ObjectStore<V>(val db: DataSource<ByteArray, ByteArray>, val serializer: Serializer<V, ByteArray>): DataSource<ByteArray, V> {
+class ObjectStore<V>(val db: DataSource<ByteArray, ByteArray>, val serializer: Serializer<V, ByteArray>) :
+    DataSource<ByteArray, V> {
+
   override val name = db.name
 
   override fun delete(key: ByteArray) {

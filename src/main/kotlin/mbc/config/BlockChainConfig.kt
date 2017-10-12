@@ -7,9 +7,7 @@ import mbc.util.CryptoUtil
 import org.joda.time.DateTime
 import org.slf4j.LoggerFactory
 import org.spongycastle.util.encoders.Hex
-import java.io.File
-import java.io.FileReader
-import java.io.FileWriter
+import java.io.*
 import java.math.BigInteger
 import java.security.PrivateKey
 import java.util.*
@@ -20,11 +18,11 @@ class BlockChainConfig {
 
   private val DEFAULT_PEER_CONNECTION_TIMEOUT = 10
 
-  private val DEFAULT_PEER_VERSION = 0x01
+  private val PEER_VERSION = 0x01
 
   private val MAINNET_NETWORK_ID = 1
 
-  enum class DATABASE_TYPE {
+  enum class DatabaseType {
     MEMORY, LEVELDB
   }
 
@@ -53,13 +51,10 @@ class BlockChainConfig {
   }
 
   fun getConfig(): Config {
-    if (defaultConfig.isEmpty) {
-      val fileConfig = ConfigFactory.parseFile(File("conf" + File.separator + "application.conf"))
+    val fileConfig = ConfigFactory.parseFile(File("conf" + File.separator + "application.conf"))
 
-      defaultConfig = defaultConfig.withFallback(fileConfig)
-    } else {
-      return defaultConfig
-    }
+    defaultConfig = defaultConfig.withFallback(fileConfig)
+
     return defaultConfig
   }
 
@@ -71,7 +66,11 @@ class BlockChainConfig {
       return minerCoinBase
     } else {
       if (getConfig().hasPathOrNull("miner.coinbase")) {
-        minerCoinBase = Hex.decode(getConfig().getString("miner.coinbase"))
+        try {
+          minerCoinBase = Hex.decode(getConfig().getString("miner.coinbase"))
+        } catch (e: Exception) {
+          throw RuntimeException("Miner Coinbase format is wrong")
+        }
         return minerCoinBase;
       } else {
         throw RuntimeException("Miner Coinbase is empty")
@@ -93,7 +92,7 @@ class BlockChainConfig {
     if (getConfig().hasPathOrNull("database.type")) {
       return getConfig().getString("database.type")
     } else {
-      return DATABASE_TYPE.MEMORY.name
+      return DatabaseType.MEMORY.name
     }
   }
 
@@ -123,7 +122,7 @@ class BlockChainConfig {
       val file = File(getDatabaseDir(), "nodeId.properties")
       val props = Properties()
       if (file.canRead()) {
-        FileReader(file).use({ r -> props.load(r) })
+        InputStreamReader(FileInputStream(file), "UTF-8").use({ r -> props.load(r) })
         val key = props.getProperty("nodeIdPrivateKey")
         return CryptoUtil.deserializePrivateKey(Hex.decode(key))
       } else {
@@ -132,9 +131,9 @@ class BlockChainConfig {
           props.setProperty("nodeIdPrivateKey", Hex.toHexString(key.private.encoded))
           props.setProperty("nodeId", Hex.toHexString(key.public.encoded))
           file.parentFile.mkdirs()
-          FileWriter(file).use({ w ->
-                                 props.store(w, "自动生成的NodeID，可以设置'peer.privateKey'来替换成自定义的NodeId")
-                               })
+          OutputStreamWriter(FileOutputStream(file), "UTF-8").use({ w ->
+            props.store(w, "Auto generated NodeID, you can set 'peer.privateKey' to replace the auto generated NodeID.")
+          })
           logger.info("自动生成NodeID: " + props.getProperty("nodeId"))
           logger.info("NodeID与私钥保存在 " + file)
 
@@ -181,15 +180,10 @@ class BlockChainConfig {
   }
 
   /**
-   * 协议版本。
+   * 协议版本，版本信息内置于客户端内。
    */
   fun getPeerVersion(): Int {
-    val config = getConfig()
-    if (config.hasPath("peer.version")) {
-      return config.getInt("peer.version")
-    }
-
-    return DEFAULT_PEER_VERSION
+    return PEER_VERSION
   }
 
   fun getClientId(): String {
@@ -197,9 +191,10 @@ class BlockChainConfig {
   }
 
   fun getGenesisBlock(): Block {
-    val genesisBlock = Block(1, 0, ByteArray(0), CryptoUtil.merkleRoot(emptyList()),
-                             Hex.decode("1234567890123456789012345678901234567890"),
-                             DateTime(2017, 2, 1, 0, 0), 0, 0, BigInteger.ZERO, emptyList())
+    val genesisBlock = Block(1, 0, ByteArray(0),
+        Hex.decode("1234567890123456789012345678901234567890"),
+        DateTime(2017, 2, 1, 0, 0), 0, 0,
+        BigInteger.ZERO, CryptoUtil.merkleRoot(emptyList()), CryptoUtil.merkleRoot(emptyList()), emptyList())
     return genesisBlock
   }
 
@@ -210,6 +205,15 @@ class BlockChainConfig {
     }
 
     return MAINNET_NETWORK_ID
+  }
+
+  fun getBootnodes(): List<String> {
+    val config = getConfig()
+    if (config.hasPath("bootnodes")) {
+      return config.getStringList("bootnodes")
+    }
+
+    return emptyList()
   }
 
 }

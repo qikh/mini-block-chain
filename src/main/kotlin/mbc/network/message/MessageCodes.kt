@@ -4,6 +4,7 @@ package mbc.network.message
  * Message code list.
  */
 enum class MessageCodes(val code: Byte) {
+
   /**
    * P2P Messages
    */

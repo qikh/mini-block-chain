@@ -1,0 +1,8 @@
+miner{
+  coinbase = "3813213d1198fe04b1bb023a82f5745b697f56ae"
+}
+
+database {
+  type = "leveldb"
+  dir = "database"
+}

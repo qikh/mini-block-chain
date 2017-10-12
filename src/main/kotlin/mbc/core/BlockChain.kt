@@ -7,6 +7,7 @@ import mbc.util.CodecUtil
 import mbc.util.CryptoUtil
 import org.joda.time.DateTime
 import org.slf4j.LoggerFactory
+import org.spongycastle.util.encoders.Hex
 import java.util.*
 
 /**
@@ -14,16 +15,9 @@ import java.util.*
  */
 class BlockChain(val config: BlockChainConfig) {
 
-  private val logger = LoggerFactory.getLogger(BlockChain::class.java)
+  private val logger = LoggerFactory.getLogger(javaClass)
 
-  var bestBlock: Block = loadBestBlock()
-
-  /**
-   * TODO: 加载BestBlock
-   */
-  private fun loadBestBlock(): Block {
-    return config.getGenesisBlock()
-  }
+  private var bestBlock: Block = config.getGenesisBlock()
 
   /**
    * 数据的存储。
@@ -35,6 +29,30 @@ class BlockChain(val config: BlockChainConfig) {
    */
   val transactionExecutor = TransactionExecutor(repository)
 
+  init {
+    // 检查NodeId，如果不存在就自动生成NodeId。
+    config.getNodeId()
+
+    loadBestBlock()
+  }
+
+  /**
+   * 读取BestBlock
+   */
+  private fun loadBestBlock(): Block {
+    bestBlock = repository.getBestBlock() ?: config.getGenesisBlock()
+    logger.debug("Best block is:" + bestBlock)
+    return bestBlock
+  }
+
+  fun getBestBlock() = bestBlock
+
+  fun updateBestBlock(newBlock: Block) {
+    logger.debug("Updating best block to ${Hex.toHexString(newBlock.hash)}")
+    repository.updateBestBlock(newBlock)
+    this.bestBlock = newBlock
+  }
+
   /**
    * 构造新的区块，要素信息为：区块高度(height)，父区块的哈希值(parentHash), 交易记录(transactions)，时间戳(time)。
    * 新的区块不会影响当前区块链的状态。
@@ -42,8 +60,9 @@ class BlockChain(val config: BlockChainConfig) {
   fun generateNewBlock(transactions: List<Transaction>): Block {
     val parent = bestBlock
 
-    val block = Block(config.getPeerVersion(), parent.height + 1, parent.hash, CryptoUtil.merkleRoot(transactions),
-                      config.getMinerCoinbase(), DateTime(), 0, 0, parent.totalDifficulty, transactions)
+    val block = Block(config.getPeerVersion(), parent.height + 1, parent.hash,
+        config.getMinerCoinbase(), DateTime(), 0, 0, parent.totalDifficulty,
+        CryptoUtil.merkleRoot(emptyList()), CryptoUtil.merkleRoot(transactions), transactions)
     return block
   }
 
@@ -52,10 +71,26 @@ class BlockChain(val config: BlockChainConfig) {
    *
    * TODO: 费用的计算和分配。
    */
-  fun processBlock(block: Block) {
+  fun processBlock(block: Block): Block {
     for (trx in block.transactions) {
       transactionExecutor.execute(trx)
     }
+    return Block(block.version, block.height, block.parentHash, block.coinBase,
+        block.time, block.difficulty, block.nonce, block.totalDifficulty,
+        repository.getAccountStateStore()?.rootHash ?: ByteArray(0), block.trxTrieRoot,
+        block.transactions)
+  }
+
+  /**
+   * Import区块数据的结果
+   */
+  enum class ImportResult {
+
+    BEST_BLOCK,
+    NON_BEST_BLOCK,
+    EXIST,
+    NO_PARENT,
+    INVALID_BLOCK
   }
 
   /**
@@ -63,14 +98,53 @@ class BlockChain(val config: BlockChainConfig) {
    *
    * TODO: 实现AccountState的Merkle Patricia Tree存储。
    */
-  fun pushBlock(block: Block) {
-    logger.debug("Push block $block to end of chain.")
+  fun importBlock(block: Block): ImportResult {
+    if (isNextBlock(block)) {
+      logger.debug("Push block $block to end of chain.")
+      val blockToSave = processBlock(block)
 
-    repository.getBlockStore()?.put(block.hash, block)
+      repository.getBlockStore()?.put(blockToSave.hash, blockToSave)
 
-    processBlock(block)
+      updateBlockInfoIndex(blockToSave)
 
-    val isMain = true // TODO: 实现分叉逻辑
+      logger.debug("Block hash: ${Hex.toHexString(blockToSave.hash)}")
+
+      updateBestBlock(blockToSave)
+
+      return ImportResult.BEST_BLOCK
+    } else {
+      if (block.height > bestBlock.height) {
+        logger.debug("Skip block $block.")
+
+        return ImportResult.NO_PARENT
+      } else {
+        if (repository.getBlockStore()?.get(block.hash) != null) { // Already exist
+          logger.debug(
+              "Block already exist. hash: ${Hex.toHexString(block.hash)}, height: ${block.height}")
+
+          return ImportResult.EXIST
+        } else if (repository.getBlockStore()?.get(block.parentHash) != null) { // Fork
+          logger.debug("Fork block $block.")
+
+          return forkBlock(block)
+        } else {
+          logger.debug("Skip block $block.")
+
+          return ImportResult.NO_PARENT
+        }
+      }
+    }
+
+  }
+
+  private fun forkBlock(block: Block): ImportResult {
+    TODO(
+        "not implemented") //To change body of created functions use File | Settings | File Templates.
+    return ImportResult.BEST_BLOCK
+  }
+
+  private fun updateBlockInfoIndex(block: Block) {
+    val isMain = true
     val newBlockInfo = BlockInfo(block.hash, isMain, block.totalDifficulty)
 
     val blockIndexStore = repository.getBlockIndexStore()
@@ -82,8 +156,12 @@ class BlockChain(val config: BlockChainConfig) {
     } else {
       blockIndexStore?.put(CodecUtil.longToByteArray(block.height), listOf(newBlockInfo))
     }
+  }
 
-    bestBlock = block
+  private fun isNextBlock(block: Block): Boolean {
+    println("Best block Hash:" + Hex.toHexString(bestBlock.hash))
+    println("Parent block Hash:" + Hex.toHexString(block.parentHash))
+    return Arrays.equals(bestBlock.hash, block.parentHash)
   }
 
 }

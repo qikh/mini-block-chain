@@ -10,6 +10,7 @@ import mbc.util.CodecUtil
  * 序列化/反序列化接口。
  */
 interface Serializer<T, S> {
+
   /**
    * Converts T ==> S
    * Should correctly handle null parameter

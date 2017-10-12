@@ -18,7 +18,8 @@ class NetworkTest {
 
   val transactionExecutor = TransactionExecutor(repository)
 
-  @Test fun peerClientServerTest() {
+  @Test
+  fun peerClientServerTest() {
     val serverConfig = BlockChainConfig("application-1.conf")
 
     val clientConfig = BlockChainConfig("application-2.conf")

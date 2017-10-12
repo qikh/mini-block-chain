@@ -15,7 +15,7 @@ import java.math.BigInteger
  */
 class Peer(val node: Node, val manager: BlockChainManager, val channel: Channel) {
 
-  private val logger = LoggerFactory.getLogger(Peer::class.java)
+  private val logger = LoggerFactory.getLogger(javaClass)
 
   var protocolVersion: Int? = null
   var networkId: Int? = null
@@ -39,7 +39,7 @@ class Peer(val node: Node, val manager: BlockChainManager, val channel: Channel)
     val config = manager.blockChain.config
 
     val msg = HelloMessage(config.getPeerVersion(), config.getClientId(), config.getPeerListenPort(),
-                           config.getNodeId()!!)
+        config.getNodeId()!!)
 
     logger.debug("${node.nodeId} say HELLO to ${channel.remoteAddress()}")
 
@@ -52,10 +52,10 @@ class Peer(val node: Node, val manager: BlockChainManager, val channel: Channel)
   fun sendStatusMessage() {
     val config = manager.blockChain.config
 
-    val bestBlock = manager.blockChain.bestBlock
+    val bestBlock = manager.blockChain.getBestBlock()
     val genesisBlock = config.getGenesisBlock()
     val msg = StatusMessage(config.getPeerVersion(), config.getNetworkId(), bestBlock.totalDifficulty, bestBlock.hash,
-                            genesisBlock.hash)
+        genesisBlock.hash)
 
     logger.debug("${node.nodeId} send STATUS to ${channel.remoteAddress()}")
 

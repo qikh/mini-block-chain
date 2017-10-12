@@ -24,7 +24,7 @@ import java.net.InetSocketAddress
  */
 class PeerClient(val manager: BlockChainManager) {
 
-  private val logger = LoggerFactory.getLogger(PeerClient::class.java)
+  private val logger = LoggerFactory.getLogger(javaClass)
 
   val group = NioEventLoopGroup()
 
@@ -58,7 +58,7 @@ class PeerClient(val manager: BlockChainManager) {
  */
 class PeerClientHelloMessageHandler(val node: Node, val manager: BlockChainManager) : ByteToMessageDecoder() {
 
-  private val logger = LoggerFactory.getLogger(PeerClientHelloMessageHandler::class.java)
+  private val logger = LoggerFactory.getLogger(javaClass)
 
   /**
    * 建立连接后应该首先握手(发送并接收HELLO消息)。
@@ -114,7 +114,7 @@ class PeerClientHelloMessageHandler(val node: Node, val manager: BlockChainManag
     val config = manager.blockChain.config
 
     val msg = HelloMessage(config.getPeerVersion(), config.getClientId(), config.getPeerListenPort(),
-                           config.getNodeId())
+        config.getNodeId())
 
     logger.debug("Client ${channel.localAddress()} say HELLO to ${channel.remoteAddress()}")
 

@@ -4,6 +4,7 @@ package mbc.storage
  * 数据源类，具体实现可以是Memory，LevelDb等。
  */
 interface DataSource<K, V> {
+
   /**
    * 数据源的名字。
    */

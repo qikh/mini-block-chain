@@ -7,7 +7,7 @@ import java.math.BigInteger
  * HELLO消息，
  */
 class StatusMessage(val protocolVersion: Int, val networkId: Int, val totalDifficulty: BigInteger,
-                    val bestHash: ByteArray, val genesisHash: ByteArray) : Message {
+    val bestHash: ByteArray, val genesisHash: ByteArray) : Message {
 
   override fun code(): Byte = MessageCodes.STATUS.code
 

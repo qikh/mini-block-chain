@@ -2,6 +2,7 @@ package mbc.util
 
 import mbc.core.Block
 import mbc.core.Transaction
+import mbc.trie.Trie
 import org.spongycastle.crypto.params.ECDomainParameters
 import org.spongycastle.jcajce.provider.asymmetric.ec.BCECPrivateKey
 import org.spongycastle.jce.ECNamedCurveTable
@@ -84,22 +85,11 @@ class CryptoUtil {
      * 计算Merkle Root Hash
      */
     fun merkleRoot(transactions: List<Transaction>): ByteArray {
-      val count = transactions.size
-      if (count == 0) {
-        return ByteArray(0)
-      } else if (count == 1) {
-        return sha256(sha256(transactions[0].encode() + transactions[0].encode())) // Double bestHash if we are leaf.
-      } else if (count == 2) {
-        return sha256(sha256(transactions[0].encode() + transactions[1].encode())) // Double bestHash if we are leaf.
-      } else {
-        if (count.mod(2) == 1) {
-          val newList = transactions.toMutableList();
-          newList.add(transactions.last())
-          return merkleRoot(newList)
-        } else {
-          return merkleRoot(transactions)
-        }
+      val trxTrie = Trie<Transaction>()
+      for (i in 0 until transactions.size) {
+        trxTrie.put(i.toString(), transactions[i])
       }
+      return trxTrie.root?.hash() ?: ByteArray(0)
     }
 
     /**

@@ -1,0 +1,16 @@
+bootnodes = [
+  "mnode://3056301006072a8648ce3d020106052b8104000a0342000475f80a0bec31879fd0773383f3560a4d77983a4247709b40375b987d27f24c1d4daeb166f53293f13b0e69c4f8c4022e899572f041628f7cfb932068fef42707@127.0.0.1:9333"
+]
+
+database {
+  type = "leveldb"
+  dir = "database-2"
+}
+
+peer {
+  listen.port = 9035
+}
+
+miner {
+  coinbase = "339779c6780910537ecee200e6a500b8d9b32b36"
+}

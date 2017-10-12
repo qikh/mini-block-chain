@@ -10,6 +10,7 @@ import java.security.PublicKey
  * 账户余额(balance)通常会保存在文件或数据库内。
  */
 class Account(val publicKey: PublicKey) {
+
   val address: ByteArray
     get() = CryptoUtil.generateAddress(publicKey)
 }

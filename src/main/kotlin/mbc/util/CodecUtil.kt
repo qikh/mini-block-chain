@@ -134,11 +134,12 @@ object CodecUtil {
     v.add(ASN1Integer(block.height))
     v.add(DERBitString(block.parentHash))
     v.add(DERBitString(block.coinBase))
-    v.add(DERBitString(block.merkleRoot))
     v.add(ASN1Integer(block.difficulty.toLong()))
     v.add(ASN1Integer(block.nonce.toLong()))
     v.add(ASN1Integer(block.time.millis))
     v.add(ASN1Integer(block.totalDifficulty))
+    v.add(DERBitString(block.stateRoot))
+    v.add(DERBitString(block.trxTrieRoot))
 
     v.add(ASN1Integer(block.transactions.size.toLong()))
 
@@ -153,7 +154,7 @@ object CodecUtil {
    * 反序列化区块(Block)。(使用ASN.1规范)
    */
   fun decodeBlock(bytes: ByteArray): Block? {
-    val v = ASN1InputStream(bytes)?.readObject()
+    val v = ASN1InputStream(bytes).readObject()
 
     if (v != null) {
       val seq = ASN1Sequence.getInstance(v)
@@ -161,15 +162,16 @@ object CodecUtil {
       val height = ASN1Integer.getInstance(seq.getObjectAt(1)).value
       val parentHash = DERBitString.getInstance(seq.getObjectAt(2))?.bytes
       val minerAddress = DERBitString.getInstance(seq.getObjectAt(3))?.bytes
-      val merkleRoot = DERBitString.getInstance(seq.getObjectAt(4))?.bytes
-      val difficulty = ASN1Integer.getInstance(seq.getObjectAt(5))?.value
-      val nonce = ASN1Integer.getInstance(seq.getObjectAt(6))?.value
-      val millis = ASN1Integer.getInstance(seq.getObjectAt(7))?.value
-      val totalDifficulty = ASN1Integer.getInstance(seq.getObjectAt(8))?.value ?: BigInteger.ZERO
+      val difficulty = ASN1Integer.getInstance(seq.getObjectAt(4))?.value
+      val nonce = ASN1Integer.getInstance(seq.getObjectAt(5))?.value
+      val millis = ASN1Integer.getInstance(seq.getObjectAt(6))?.value
+      val totalDifficulty = ASN1Integer.getInstance(seq.getObjectAt(7))?.value ?: BigInteger.ZERO
+      val stateRoot = DERBitString.getInstance(seq.getObjectAt(8))?.bytes
+      val trxTrieRoot = DERBitString.getInstance(seq.getObjectAt(9))?.bytes
 
-      val trxSize = ASN1Integer.getInstance(seq.getObjectAt(9))?.value
+      val trxSize = ASN1Integer.getInstance(seq.getObjectAt(10))?.value
 
-      val trxValues = ASN1Sequence.getInstance(seq.getObjectAt(10))
+      val trxValues = ASN1Sequence.getInstance(seq.getObjectAt(11))
 
       val trxList = mutableListOf<Transaction>()
 
@@ -180,13 +182,14 @@ object CodecUtil {
       }
 
       if (version == null || height == null || parentHash == null || minerAddress == null ||
-          merkleRoot == null || difficulty == null || nonce == null || millis == null || totalDifficulty == null ||
-          trxSize == null || trxSize.toInt() != trxList.size) {
+          difficulty == null || nonce == null || millis == null || totalDifficulty == null ||
+          stateRoot == null || trxTrieRoot == null || trxSize == null || trxSize.toInt() != trxList.size) {
         return null
       }
 
-      return Block(version.toInt(), height.toLong(), parentHash, CryptoUtil.merkleRoot(trxList), minerAddress,
-                   DateTime(millis.toLong()), difficulty.toInt(), nonce.toInt(), totalDifficulty, trxList)
+      return Block(version.toInt(), height.toLong(), parentHash, minerAddress,
+          DateTime(millis.toLong()), difficulty.toInt(), nonce.toInt(), totalDifficulty,
+          stateRoot, trxTrieRoot, trxList)
     }
 
     return null
@@ -235,6 +238,7 @@ object CodecUtil {
           result.add(BlockInfo(hash, isMain, totalDifficulty))
         }
       }
+      return result
     }
 
     return null
@@ -267,12 +271,16 @@ object CodecUtil {
       return ASN1Integer(v)
     } else if (v is BigInteger) {
       return ASN1Integer(v)
-    }  else if (v is Array<*>) {
+    } else if (v is Array<*>) {
       val vec = ASN1EncodableVector()
 
       v.forEach { vec.add(it?.let { asn1Encode(it) }) }
 
       return DERSequence(vec)
+    } else if (v is Transaction) {
+      return encodeTransactionToAsn1(v)
+    } else if (v is Block) {
+      return encodeBlockToAsn1(v)
     } else {
       throw Exception("Can not convert type ${v.javaClass} to ASN1 object.")
     }

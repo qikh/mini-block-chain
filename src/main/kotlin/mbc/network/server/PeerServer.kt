@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit
  */
 class PeerServer(val manager: BlockChainManager) {
 
-  private val logger = LoggerFactory.getLogger(PeerServer::class.java)
+  private val logger = LoggerFactory.getLogger(javaClass)
 
   val group = NioEventLoopGroup()
 
@@ -79,7 +79,7 @@ class PeerServer(val manager: BlockChainManager) {
 
 class PeerServerHelloMessageHandler(val manager: BlockChainManager) : ByteToMessageDecoder() {
 
-  private val logger = LoggerFactory.getLogger(PeerServerHelloMessageHandler::class.java)
+  private val logger = LoggerFactory.getLogger(javaClass)
 
   /**
    * 服务器端返回HELLO消息后握手完成。
@@ -99,6 +99,12 @@ class PeerServerHelloMessageHandler(val manager: BlockChainManager) : ByteToMess
       } else { // 握手完成！
         val node = Node(msg.nodeId, ctx.channel().remoteAddress().toString(), msg.listenPort)
         val peer = Peer(node, manager, ctx.channel())
+
+        if (manager.peerConnected(peer)) {
+          ctx.pipeline().remove(this)
+          peer.close()
+          return
+        }
 
         peer.sendHelloMessage()
 

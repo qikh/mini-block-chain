@@ -37,11 +37,13 @@ class BlockChainTest {
 
   val transactionExecutor = TransactionExecutor(repository)
 
-  @Before fun setup() {
+  @Before
+  fun setup() {
     Security.insertProviderAt(BouncyCastleProvider(), 1)
   }
 
-  @After fun close() {
+  @After
+  fun close() {
     repository.getAccountStateStore()?.db?.close()
     repository.getAccountStateStore()?.db?.close()
     repository.getAccountStateStore()?.db?.close()
@@ -50,7 +52,8 @@ class BlockChainTest {
   /**
    * 验证账户地址长度为40(20个byte)。
    */
-  @Test fun validateAddressTest() {
+  @Test
+  fun validateAddressTest() {
     val keyPair = generateKeyPair() ?: return
 
     val account = Account(keyPair.public)
@@ -60,7 +63,8 @@ class BlockChainTest {
   /**
    * 验证交易完成后账户余额(balance)是否正确。
    */
-  @Test fun applyTransactionTest() {
+  @Test
+  fun applyTransactionTest() {
     // 初始化Alice账户
     val kp1 = generateKeyPair() ?: return
     val alice = Account(kp1.public)
@@ -89,7 +93,8 @@ class BlockChainTest {
   /**
    * 验证ECDSAE签名算法。
    */
-  @Test fun verifyECDSASignatureTest() {
+  @Test
+  fun verifyECDSASignatureTest() {
     // Get the instance of the Key Generator with "EC" algorithm
 
     val gen = KeyPairGenerator.getInstance("EC", "SC")
@@ -119,7 +124,8 @@ class BlockChainTest {
   /**
    * 验证交易签名。
    */
-  @Test fun verifyTransactionSignatureTest() {
+  @Test
+  fun verifyTransactionSignatureTest() {
     // 初始化Alice账户
     val kp1 = generateKeyPair() ?: return
     val alice = Account(kp1.public)
@@ -141,7 +147,8 @@ class BlockChainTest {
     assert(trx.isValid)
   }
 
-  @Test fun addressTest() {
+  @Test
+  fun addressTest() {
     // 初始化Alice账户
     val kp1 = generateKeyPair() ?: return
     val alice = Account(kp1.public)
@@ -154,7 +161,8 @@ class BlockChainTest {
   /**
    * 构造新的区块
    */
-  @Test fun createBlockTest() {
+  @Test
+  fun createBlockTest() {
     // 初始化Alice账户
     val kp1 = generateKeyPair() ?: return
     val alice = Account(kp1.public)
@@ -190,7 +198,8 @@ class BlockChainTest {
   /**
    * 挖矿算法测试。
    */
-  @Test fun mineAlgorithmTest() {
+  @Test
+  fun mineAlgorithmTest() {
     val ver: Int = 1
     val parentHash = "000000000000000117c80378b8da0e33559b5997f2ad55e2f7d18ec1975b9717"
     val merkleRoot = "871714dcbae6c8193a2bb9b2a69fe1c0440399f38d94b3a0f1b447275a29978a"
@@ -210,7 +219,7 @@ class BlockChainTest {
       val headerBuffer = ByteBuffer.allocate(4 + 32 + 32 + 4 + 4 + 4)
       headerBuffer.put(ByteBuffer.allocate(4).putInt(ver).array()) // version
       headerBuffer.put(Hex.decode(parentHash)) // parentHash
-      headerBuffer.put(Hex.decode(merkleRoot)) // merkleRoot
+      headerBuffer.put(Hex.decode(merkleRoot)) // trxTrieRoot
       headerBuffer.put(ByteBuffer.allocate(4).putInt(time).array()) // time
       headerBuffer.put(ByteBuffer.allocate(4).putInt(difficulty).array()) // difficulty(current difficulty)
       headerBuffer.put(ByteBuffer.allocate(4).putInt(nonce).array()) // nonce
@@ -231,7 +240,8 @@ class BlockChainTest {
   /**
    * 挖矿难度(Difficulty)运算测试。
    */
-  @Test fun difficultyTest() {
+  @Test
+  fun difficultyTest() {
     val difficulty = BigInteger.valueOf(0x0404cbL).multiply(BigInteger.valueOf(2).pow(8 * (0x1b - 3)))
     assertEquals(difficulty.toString(16), "404cb000000000000000000000000000000000000000000000000")
   }
@@ -239,7 +249,8 @@ class BlockChainTest {
   /**
    * Merkle Root Hash测试。
    */
-  @Test fun merkleTest() {
+  @Test
+  fun merkleTest() {
     // 初始化Alice账户
     val kp1 = generateKeyPair() ?: return
     val alice = Account(kp1.public)
@@ -260,14 +271,15 @@ class BlockChainTest {
     // Alice用私钥签名
     trx2.sign(kp1.private)
 
-    val merkleRoot = CryptoUtil.merkleRoot(listOf(trx1, trx2))
-    println(Hex.toHexString(merkleRoot))
+    val trxTrieRoot = CryptoUtil.merkleRoot(listOf(trx1, trx2))
+    println(Hex.toHexString(trxTrieRoot))
   }
 
   /**
    * 挖矿测试
    */
-  @Test fun mineBlockTest() {
+  @Test
+  fun mineBlockTest() {
     // 初始化Alice账户
     val kp1 = generateKeyPair() ?: return
     val alice = Account(kp1.public)
@@ -301,8 +313,9 @@ class BlockChainTest {
 
     val mineResult = BlockMiner.mine(block)
     val totalDifficulty = block.totalDifficulty.add(BigInteger.valueOf(mineResult.difficulty.toLong()))
-    val minedBlock = Block(block.version, block.height, block.parentHash, block.merkleRoot, block.coinBase,
-                           block.time, mineResult.difficulty, mineResult.nonce, totalDifficulty, block.transactions)
+    val minedBlock = Block(block.version, block.height, block.parentHash, block.coinBase, block.time,
+        mineResult.difficulty, mineResult.nonce, totalDifficulty, block.stateRoot, block.trxTrieRoot,
+        block.transactions)
 
     println("Block nonce: ${minedBlock.nonce}")
     assertNotEquals(minedBlock.difficulty, 0)
@@ -312,7 +325,8 @@ class BlockChainTest {
   /**
    * 账户状态序列化/反序列化测试。
    */
-  @Test fun accountStateEncodeTest() {
+  @Test
+  fun accountStateEncodeTest() {
     val accountState = AccountState(BigInteger.TEN, BigInteger.TEN)
 
     println(ASN1Dump.dumpAsString(ASN1InputStream(accountState.encode()).readObject()))
@@ -326,7 +340,8 @@ class BlockChainTest {
   /**
    * 交易Transaction序列化/反序列化测试。
    */
-  @Test fun transactionEncodeTest() {
+  @Test
+  fun transactionEncodeTest() {
     // 初始化Alice账户
     val kp1 = generateKeyPair() ?: return
     val alice = Account(kp1.public)
@@ -358,7 +373,8 @@ class BlockChainTest {
   /**
    * 区块Block序列化/反序列化测试。
    */
-  @Test fun blockEncodeTest() {
+  @Test
+  fun blockEncodeTest() {
     // 初始化Alice账户
     val kp1 = generateKeyPair() ?: return
     val alice = Account(kp1.public)
@@ -400,15 +416,17 @@ class BlockChainTest {
     assertEquals(block.version, decoded.version)
     assertEquals(block.height, decoded.height)
     assertArrayEquals(block.parentHash, decoded.parentHash)
-    assertArrayEquals(block.merkleRoot, decoded.merkleRoot)
+    assertArrayEquals(block.trxTrieRoot, decoded.trxTrieRoot)
     assertArrayEquals(block.coinBase, decoded.coinBase)
     assertArrayEquals(block.transactions.toTypedArray(), decoded.transactions.toTypedArray())
     assertEquals(block.time, decoded.time)
     assertEquals(block.difficulty, decoded.difficulty)
     assertEquals(block.nonce, decoded.nonce)
+    assertArrayEquals(block.hash, decoded.hash)
   }
 
-  @Test fun getPublicKeyFromPrivateKeyTest() {
+  @Test
+  fun getPublicKeyFromPrivateKeyTest() {
     for (i in 0..100) {
       val kp = generateKeyPair() ?: return
       val privateKey = kp.private
@@ -422,7 +440,8 @@ class BlockChainTest {
     }
   }
 
-  @Test fun initConfigTest() {
+  @Test
+  fun initConfigTest() {
     val mbc = MiniBlockChain(config)
     mbc.init()
 

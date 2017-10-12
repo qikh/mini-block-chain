@@ -4,10 +4,10 @@ import mbc.config.BlockChainConfig
 import mbc.core.AccountState
 import mbc.core.Block
 import mbc.core.Transaction
-import mbc.serialization.AccountStateSerialize
 import mbc.serialization.BlockInfosSerialize
 import mbc.serialization.BlockSerialize
 import mbc.serialization.TransactionSerialize
+import mbc.trie.PatriciaTrie
 import mbc.util.CodecUtil
 import java.math.BigInteger
 
@@ -46,9 +46,9 @@ class Repository {
   }
 
   /**
-   * Account State Db.
+   * Account state Db.
    */
-  private var accountDs: ObjectStore<AccountState>? = null
+  private var accountDs: PatriciaTrie? = null
 
   /**
    * Blocks Db.
@@ -65,19 +65,26 @@ class Repository {
    */
   private var transactionDs: ObjectStore<Transaction>? = null
 
+  val BEST_BLOCK_KEY = "0".toByteArray()
+
+  /**
+   * Best block Db.
+   */
+  private var bestBlockDs: ObjectStore<Block>? = null
+
   /**
    * Account State的存储类组装。
    */
-  fun getAccountStateStore(): ObjectStore<AccountState>? {
+  fun getAccountStateStore(): PatriciaTrie? {
     if (accountDs != null) return accountDs
 
     val dbName = "accounts"
     var ds: DataSource<ByteArray, ByteArray> = MemoryDataSource(dbName)
-    if (config.getDatabaseType().equals(BlockChainConfig.DATABASE_TYPE.LEVELDB.name, true)) {
+    if (config.getDatabaseType().equals(BlockChainConfig.DatabaseType.LEVELDB.name, true)) {
       ds = LevelDbDataSource(dbName, config.getDatabaseDir())
     }
     ds.init()
-    accountDs = ObjectStore(ds, AccountStateSerialize())
+    accountDs = PatriciaTrie(ds)
     return accountDs
   }
 
@@ -89,7 +96,7 @@ class Repository {
 
     val dbName = "blocks"
     var ds: DataSource<ByteArray, ByteArray> = MemoryDataSource(dbName)
-    if (config.getDatabaseType().equals(BlockChainConfig.DATABASE_TYPE.LEVELDB.name, true)) {
+    if (config.getDatabaseType().equals(BlockChainConfig.DatabaseType.LEVELDB.name, true)) {
       ds = LevelDbDataSource(dbName, config.getDatabaseDir())
     }
     ds.init()
@@ -105,7 +112,7 @@ class Repository {
 
     val dbName = "transactions"
     var ds: DataSource<ByteArray, ByteArray> = MemoryDataSource(dbName)
-    if (config.getDatabaseType().equals(BlockChainConfig.DATABASE_TYPE.LEVELDB.name, true)) {
+    if (config.getDatabaseType().equals(BlockChainConfig.DatabaseType.LEVELDB.name, true)) {
       ds = LevelDbDataSource(dbName, config.getDatabaseDir())
     }
     ds.init()
@@ -121,7 +128,7 @@ class Repository {
 
     val dbName = "blockIndex"
     var ds: DataSource<ByteArray, ByteArray> = MemoryDataSource(dbName)
-    if (config.getDatabaseType().equals(BlockChainConfig.DATABASE_TYPE.LEVELDB.name, true)) {
+    if (config.getDatabaseType().equals(BlockChainConfig.DatabaseType.LEVELDB.name, true)) {
       ds = LevelDbDataSource(dbName, config.getDatabaseDir())
     }
     ds.init()
@@ -130,10 +137,26 @@ class Repository {
   }
 
   /**
+   * BestBlock的存储类组装。
+   */
+  fun getBestBlockStore(): ObjectStore<Block>? {
+    if (bestBlockDs != null) return bestBlockDs
+
+    val dbName = "bestBlock"
+    var ds: DataSource<ByteArray, ByteArray> = MemoryDataSource(dbName)
+    if (config.getDatabaseType().equals(BlockChainConfig.DatabaseType.LEVELDB.name, true)) {
+      ds = LevelDbDataSource(dbName, config.getDatabaseDir())
+    }
+    ds.init()
+    bestBlockDs = ObjectStore(ds, BlockSerialize())
+    return bestBlockDs
+  }
+
+  /**
    * 读取账户余额。
    */
   fun getBalance(address: ByteArray): BigInteger {
-    return getAccountStateStore()?.get(address)?.balance ?: BigInteger.ZERO
+    return getAccountState(address)?.balance ?: BigInteger.ZERO
   }
 
   /**
@@ -141,7 +164,7 @@ class Repository {
    */
   fun increaseNonce(address: ByteArray) {
     val accountState = getOrCreateAccountState(address)
-    getAccountStateStore()?.put(address, accountState.increaseNonce())
+    getAccountStateStore()?.update(address, CodecUtil.encodeAccountState(accountState.increaseNonce()))
   }
 
   /**
@@ -149,7 +172,7 @@ class Repository {
    */
   fun addBalance(address: ByteArray, amount: BigInteger) {
     val accountState = getOrCreateAccountState(address)
-    getAccountStateStore()?.put(address, accountState.increaseBalance(amount))
+    getAccountStateStore()?.update(address, CodecUtil.encodeAccountState(accountState.increaseBalance(amount)))
   }
 
   fun getBlockInfos(height: Long): List<BlockInfo>? {
@@ -160,12 +183,20 @@ class Repository {
     return getBlockStore()?.get(hash)
   }
 
+  fun getBestBlock(): Block? {
+    return getBestBlockStore()?.get(BEST_BLOCK_KEY)
+  }
+
+  fun updateBestBlock(block:Block) {
+    getBestBlockStore()?.put(BEST_BLOCK_KEY, block)
+  }
+
   /**
    * 新建账户。
    */
   private fun createAccountState(address: ByteArray): AccountState {
     val state = AccountState(BigInteger.ZERO, BigInteger.ZERO)
-    getAccountStateStore()?.put(address, state)
+    getAccountStateStore()?.update(address, CodecUtil.encodeAccountState(state))
     return state
   }
 
@@ -173,11 +204,14 @@ class Repository {
    * 判断账户状态Account State是不是存在，如果不存在就新建账户。
    */
   private fun getOrCreateAccountState(address: ByteArray): AccountState {
-    var ret = getAccountStateStore()?.get(address)
+    var ret = getAccountState(address)
     if (ret == null) {
       ret = createAccountState(address)
     }
     return ret
   }
+
+  private fun getAccountState(address: ByteArray) = getAccountStateStore()?.get(
+      address)?.let { CodecUtil.decodeAccountState(it) }
 
 }

@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory
  */
 class MessageDecodeHandler(val peer: Peer) : ByteToMessageDecoder() {
 
-  private val logger = LoggerFactory.getLogger(MessageDecodeHandler::class.java)
+  private val logger = LoggerFactory.getLogger(javaClass)
 
   private val manager: BlockChainManager = peer.manager
 
@@ -111,8 +111,6 @@ class MessageDecodeHandler(val peer: Peer) : ByteToMessageDecoder() {
 
   /**
    * Blocks handler.
-   *
-   * TODO: 分叉逻辑。
    */
   private fun processBlocks(msg: BlocksMessage?) {
     logger.debug("Processing BlocksMessage")
@@ -134,7 +132,7 @@ class MessageDecodeHandler(val peer: Peer) : ByteToMessageDecoder() {
       throw MessageDecodeException("NewBlockMessage decode failed.")
     }
 
-    peer.manager.blockChain.pushBlock(msg.block)
+    manager.processPeerNewBlock(msg.block, peer)
   }
 
   /**
@@ -147,7 +145,7 @@ class MessageDecodeHandler(val peer: Peer) : ByteToMessageDecoder() {
       throw MessageDecodeException("NewTransactionsMessage decode failed.")
     }
 
-    peer.manager.addPendingTransactions(msg.transactions)
+    manager.addPendingTransactions(msg.transactions)
   }
 
   /**
@@ -171,14 +169,17 @@ class MessageDecodeHandler(val peer: Peer) : ByteToMessageDecoder() {
     peer.bestHash = msg.bestHash
     peer.genesisHash = msg.genesisHash
 
-    val bestBlock = peer.manager.blockChain.bestBlock
+    val bestBlock = manager.blockChain.getBestBlock()
     val myTotalDifficulty = bestBlock.totalDifficulty
     val peerTotalDifficulty = peer.totalDifficulty
     if (peerTotalDifficulty != null && peerTotalDifficulty > myTotalDifficulty) {
       logger.debug("Peer total difficulty was greater than mine.")
 
-      manager.startSync(peer)
+      manager.stopMining()
 
+      manager.startSync(peer)
+    } else {
+      manager.startMining()
     }
 
     logger.debug(

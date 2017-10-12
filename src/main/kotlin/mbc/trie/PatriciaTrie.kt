@@ -30,7 +30,8 @@ fun binToNibbbles(s: ByteArray): Array<Int> {
 }
 
 fun divMod(c: Byte, i: Int): Array<Int> {
-  return arrayOf(c.toInt() / i, c.toInt() % i)
+  val ui = if (c.toInt() > 0) c.toInt() else 256 + c.toInt()
+  return arrayOf(ui / i, ui % i)
 }
 
 
@@ -142,24 +143,24 @@ fun startWith(full: Array<Int>, part: Array<Int>): Boolean {
   return (0..part.size - 1).none { full[it] != part[it] }
 }
 
-enum class NODE_TYPE {
+enum class NodeType {
   NODE_TYPE_BLANK,
   NODE_TYPE_LEAF,
   NODE_TYPE_EXTENSION,
   NODE_TYPE_BRANCH
 }
 
-fun isKeyValueType(node_type: NODE_TYPE): Boolean {
-  return node_type == NODE_TYPE.NODE_TYPE_LEAF || node_type == NODE_TYPE.NODE_TYPE_EXTENSION
+fun isKeyValueType(node_type: NodeType): Boolean {
+  return node_type == NodeType.NODE_TYPE_LEAF || node_type == NodeType.NODE_TYPE_EXTENSION
 }
 
 val BLANK_ROOT = ByteArray(0)
 val EMPTY_VALUE = ByteArray(0)
 val BLANK_NODE = TrieNode(EMPTY_VALUE, EMPTY_VALUE, null)
 val EMPTY_CHILDREN_LIST = arrayOf(EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE,
-                                  EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE,
-                                  EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE,
-                                  EMPTY_VALUE)
+    EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE,
+    EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE, EMPTY_VALUE,
+    EMPTY_VALUE)
 
 
 class TrieNode(val key: ByteArray, val value: ByteArray, val children: Array<ByteArray>? = null) {
@@ -171,21 +172,21 @@ class TrieNode(val key: ByteArray, val value: ByteArray, val children: Array<Byt
     }
   }
 
-  val type: NODE_TYPE
+  val type: NodeType
     get() {
       if (key.isEmpty() && children == null) {
-        return NODE_TYPE.NODE_TYPE_BLANK
+        return NodeType.NODE_TYPE_BLANK
       } else if (key.isNotEmpty() && children == null) {
         val nibbles = unpackToNibbles(key)
         val has_terminator = nibbles.last() == NIBBLE_TERMINATOR
 
         if (has_terminator) {
-          return NODE_TYPE.NODE_TYPE_LEAF
+          return NodeType.NODE_TYPE_LEAF
         } else {
-          return NODE_TYPE.NODE_TYPE_EXTENSION
+          return NodeType.NODE_TYPE_EXTENSION
         }
       } else if (key.isEmpty() && children != null) {
-        return NODE_TYPE.NODE_TYPE_BRANCH
+        return NodeType.NODE_TYPE_BRANCH
       } else {
         throw Exception("Unsupported Trie Node Type")
       }
@@ -227,7 +228,7 @@ class TrieNode(val key: ByteArray, val value: ByteArray, val children: Array<Byt
   }
 
   override fun toString(): String {
-    if (type == NODE_TYPE.NODE_TYPE_BRANCH) {
+    if (type == NodeType.NODE_TYPE_BRANCH) {
       return "${this.children?.map { it.map(Byte::toString) }}"
     } else {
       return "${this.key.map(Byte::toString)} ${this.value.map(Byte::toString)} "
@@ -236,7 +237,7 @@ class TrieNode(val key: ByteArray, val value: ByteArray, val children: Array<Byt
 }
 
 class PatriciaTrie {
-  private val logger = LoggerFactory.getLogger(PatriciaTrie::class.java)
+  private val logger = LoggerFactory.getLogger(javaClass)
 
   var db: DataSource<ByteArray, ByteArray>
   var rootNode = BLANK_NODE
@@ -279,8 +280,8 @@ class PatriciaTrie {
 
   private fun get(node: TrieNode, key: Array<Int>): ByteArray {
     when (node.type) {
-      NODE_TYPE.NODE_TYPE_BLANK -> return EMPTY_VALUE
-      NODE_TYPE.NODE_TYPE_BRANCH -> {
+      NodeType.NODE_TYPE_BLANK -> return EMPTY_VALUE
+      NodeType.NODE_TYPE_BRANCH -> {
         if (key.isEmpty()) { // Key遍历结束，返回当前节点的Value
           return node.value
         } else if (node.children != null) { // 继续遍历Key
@@ -288,7 +289,7 @@ class PatriciaTrie {
           return get(subNode, key.copyOfRange(1, key.size))
         }
       }
-      NODE_TYPE.NODE_TYPE_LEAF -> {
+      NodeType.NODE_TYPE_LEAF -> {
         if (node.key.isNotEmpty()) {
           val currKey = withoutTerminator(unpackToNibbles(node.key))
           if (Arrays.equals(currKey, key)) {
@@ -296,7 +297,7 @@ class PatriciaTrie {
           }
         }
       }
-      NODE_TYPE.NODE_TYPE_EXTENSION -> {
+      NodeType.NODE_TYPE_EXTENSION -> {
         if (node.key.isNotEmpty()) {
           val currKey = withoutTerminator(unpackToNibbles(node.key))
 
@@ -333,8 +334,8 @@ class PatriciaTrie {
 
   private fun update(node: TrieNode, key: Array<Int>, value: ByteArray): TrieNode {
     when (node.type) {
-      NODE_TYPE.NODE_TYPE_BLANK -> return TrieNode(packNibbles(withTerminator(key)), value, null)
-      NODE_TYPE.NODE_TYPE_BRANCH -> {
+      NodeType.NODE_TYPE_BLANK -> return TrieNode(packNibbles(withTerminator(key)), value, null)
+      NodeType.NODE_TYPE_BRANCH -> {
         if (key.isEmpty()) { // End of branch.
           return TrieNode(node.key, value, node.children)
         } else if (node.children != null) {
@@ -348,10 +349,10 @@ class PatriciaTrie {
           return TrieNode(node.key, value, children)
         }
       }
-      NODE_TYPE.NODE_TYPE_LEAF -> {
+      NodeType.NODE_TYPE_LEAF -> {
         return updateKvNode(node, key, value)
       }
-      NODE_TYPE.NODE_TYPE_EXTENSION -> {
+      NodeType.NODE_TYPE_EXTENSION -> {
         return updateKvNode(node, key, value)
       }
     }
@@ -362,8 +363,8 @@ class PatriciaTrie {
 
     val currKey = withoutTerminator(unpackToNibbles(node.key))
 
-    val isLeaf = node.type == NODE_TYPE.NODE_TYPE_LEAF
-    val isExtension = node.type == NODE_TYPE.NODE_TYPE_EXTENSION
+    val isLeaf = node.type == NodeType.NODE_TYPE_LEAF
+    val isExtension = node.type == NodeType.NODE_TYPE_EXTENSION
 
     logger.debug("this node is an extension node? $isExtension")
     logger.debug("cur key , next key ${currKey.map(Int::toString)} ${key.map(Int::toString)}")
@@ -415,14 +416,14 @@ class PatriciaTrie {
     } else { // Making branch
       logger.debug("making a branch")
       val children = EMPTY_CHILDREN_LIST
-      if (remainCurrKey.size == 1 && node.type == NODE_TYPE.NODE_TYPE_EXTENSION) {
+      if (remainCurrKey.size == 1 && node.type == NodeType.NODE_TYPE_EXTENSION) {
         logger.debug("key done and is inner")
         children[remainCurrKey[0]] = node.value
       } else {
         logger.debug("key not done or not inner $node ${key.map(Int::toString)} ${value.map(Byte::toString)}")
         val subNode = TrieNode(packNibbles(
             adaptTerminator(remainKey.copyOfRange(1, remainKey.size),
-                            !isExtension)), node.value)
+                !isExtension)), node.value)
         saveNodeToStorage(subNode)
         children[remainCurrKey[0]] = nodeHash(subNode)
       }
@@ -466,10 +467,10 @@ class PatriciaTrie {
 
   private fun delete(node: TrieNode, key: Array<Int>): TrieNode {
     when (node.type) {
-      NODE_TYPE.NODE_TYPE_BLANK -> return BLANK_NODE
-      NODE_TYPE.NODE_TYPE_BRANCH -> return deleteBranchNode(node, key)
-      NODE_TYPE.NODE_TYPE_LEAF -> return deleteKvNode(node, key)
-      NODE_TYPE.NODE_TYPE_EXTENSION -> return deleteKvNode(node, key)
+      NodeType.NODE_TYPE_BLANK -> return BLANK_NODE
+      NodeType.NODE_TYPE_BRANCH -> return deleteBranchNode(node, key)
+      NodeType.NODE_TYPE_LEAF -> return deleteKvNode(node, key)
+      NodeType.NODE_TYPE_EXTENSION -> return deleteKvNode(node, key)
     }
   }
 
@@ -492,7 +493,7 @@ class PatriciaTrie {
       if (isKeyValueType(subNode.type)) {
         val newKey = arrayOf(notBlankIndex) + unpackToNibbles(subNode.key)
         return TrieNode(packNibbles(newKey), subNode.value)
-      } else if (subNode.type == NODE_TYPE.NODE_TYPE_BRANCH) {
+      } else if (subNode.type == NodeType.NODE_TYPE_BRANCH) {
         return TrieNode(packNibbles(arrayOf(notBlankIndex)), nodeHash(subNode))
       }
     }
@@ -533,7 +534,7 @@ class PatriciaTrie {
       return node
     }
 
-    if (node.type == NODE_TYPE.NODE_TYPE_LEAF) {
+    if (node.type == NodeType.NODE_TYPE_LEAF) {
       if (Arrays.equals(key, currKey)) {
         return BLANK_NODE
       } else {
@@ -576,18 +577,18 @@ class PatriciaTrie {
     val vec = ASN1EncodableVector()
 
     when (node.type) {
-      NODE_TYPE.NODE_TYPE_BLANK -> {
+      NodeType.NODE_TYPE_BLANK -> {
         return EMPTY_VALUE
       }
-      NODE_TYPE.NODE_TYPE_LEAF -> {
+      NodeType.NODE_TYPE_LEAF -> {
         vec.add(CodecUtil.asn1Encode(node.key))
         vec.add(CodecUtil.asn1Encode(node.value))
       }
-      NODE_TYPE.NODE_TYPE_EXTENSION -> {
+      NodeType.NODE_TYPE_EXTENSION -> {
         vec.add(CodecUtil.asn1Encode(node.key))
         vec.add(CodecUtil.asn1Encode(node.value))
       }
-      NODE_TYPE.NODE_TYPE_BRANCH -> {
+      NodeType.NODE_TYPE_BRANCH -> {
         // 16 slots
         node.children?.forEach {
           vec.add(CodecUtil.asn1Encode(it))
@@ -609,7 +610,7 @@ class PatriciaTrie {
     val asn1: ASN1Primitive?
     try {
       asn1 = ASN1InputStream(bytes).readObject()
-    } catch(e: Exception) {
+    } catch (e: Exception) {
       return BLANK_NODE
     }
 

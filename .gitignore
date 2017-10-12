@@ -16,3 +16,14 @@ hs_err_pid*
 
 # build files
 build
+out
+.gradle/
+
+logs/
+
+database/
+test-database/
+test-database-1/
+test-database-2/
+
+*.iml

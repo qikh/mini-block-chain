@@ -5,11 +5,13 @@ import io.reactivex.schedulers.Schedulers
 import mbc.miner.BlockMiner
 import mbc.miner.MineResult
 import mbc.network.Peer
+import mbc.network.client.PeerClient
 import org.slf4j.LoggerFactory
+import java.net.URI
 
 class BlockChainManager(val blockChain: BlockChain) {
 
-  private val logger = LoggerFactory.getLogger(BlockChainManager::class.java)
+  private val logger = LoggerFactory.getLogger(javaClass)
 
   /**
    * 等待加入区块的交易数据。
@@ -30,6 +32,11 @@ class BlockChainManager(val blockChain: BlockChain) {
    * 是否正在挖矿中。
    */
   var mining: Boolean = false
+
+  /**
+   * 正在挖矿中的区块。
+   */
+  var miningBlock: Block? = null
 
   /**
    * 是否正在同步区块中。
@@ -59,13 +66,20 @@ class BlockChainManager(val blockChain: BlockChain) {
   /**
    * 增加Peer连接。
    */
-  fun addPeer(peer: Peer) {
+  fun addPeer(peer: Peer): Int {
     logger.debug("Peer connected: $peer")
 
-    peers.add(peer)
+    if (peers.none { it.node.nodeId == peer.node.nodeId }) {
+      peers.add(peer)
+    } else {
+      logger.debug("Peer $peer.node.nodeId already exists in connected peer list")
+      return -1
+    }
 
     // 监听Peer的连接关闭事件
     peer.channel.closeFuture().addListener { notifyPeerClosed(peer) }
+
+    return 0
   }
 
   private fun notifyPeerClosed(peer: Peer) {
@@ -86,22 +100,24 @@ class BlockChainManager(val blockChain: BlockChain) {
    * 停止异步Mining。
    */
   fun stopMining() {
-    mining = false
 
-    BlockMiner.stop()
+    mining = false
   }
 
   fun mineBlock() {
-    val block = blockChain.generateNewBlock(pendingTransactions)
-    Flowable.fromCallable({ BlockMiner.mine(block) })
+    logger.debug("Mine block.")
+    miningBlock = blockChain.generateNewBlock(pendingTransactions)
+    Flowable.fromCallable({ BlockMiner.mine(miningBlock!!) })
         .subscribeOn(Schedulers.computation())
         .observeOn(Schedulers.single())
         .subscribe({
-                     processNewBlock(it)
-                     if (mining) {
-                       mineBlock()
-                     }
-                   })
+          if (it.success) {
+            processMinedBlock(it)
+          }
+          if (mining) { // continue mining.
+            mineBlock()
+          }
+        })
   }
 
   /**
@@ -117,7 +133,7 @@ class BlockChainManager(val blockChain: BlockChain) {
    * 向Peer请求区块数据。
    */
   fun requestPeerBlocks(peer: Peer) {
-    peer.sendGetBlocks(blockChain.bestBlock.height, 10)
+    peer.sendGetBlocks(blockChain.getBestBlock().height + 1, 10)
   }
 
   /**
@@ -133,12 +149,14 @@ class BlockChainManager(val blockChain: BlockChain) {
        * 收到区块的数量大于0则保存区块，否则说明同步完成，停止区块同步。
        */
       if (blocks.size > 0) {
-        blocks.forEach { blockChain.pushBlock(it) }
+        blocks.forEach { blockChain.importBlock(it) }
 
         // 继续请求区块数据，直至同步完毕。
         requestPeerBlocks(peer)
       } else {
         stopSync()
+
+        startMining()
       }
     }
   }
@@ -150,20 +168,35 @@ class BlockChainManager(val blockChain: BlockChain) {
   /**
    * Mining完成后把挖到的区块加入到区块链。
    */
-  private fun processNewBlock(result: MineResult) {
+  private fun processMinedBlock(result: MineResult) {
     val block = result.block
     logger.debug("Mined block: $block")
 
-    blockChain.pushBlock(block)
-
-    peers.map { it.sendNewBlock(block) }
+    if (blockChain.importBlock(block) == BlockChain.ImportResult.BEST_BLOCK) {
+      val bestBlock = blockChain.getBestBlock()
+      peers.forEach { it.sendNewBlock(bestBlock) }
+    }
   }
 
   /**
    * 开始搜索可连接的Peer。
+   *
+   * TODO: 运行时更新Peer地址列表并刷新连接。
    */
   fun startPeerDiscovery() {
+    val bootnodes = blockChain.config.getBootnodes()
 
+    if (bootnodes.size > 0) {
+      bootnodes.forEach {
+        val uri = URI(it)
+        if (uri.scheme == "mnode") {
+          // Run PeerClient for nodes in bootnodes list. It will make async connection.
+          PeerClient(this).connectAsync(Node(uri.userInfo, uri.host, uri.port))
+        }
+      }
+    } else {
+      startMining()
+    }
   }
 
   /**
@@ -182,5 +215,31 @@ class BlockChainManager(val blockChain: BlockChain) {
 
       peers.map { it.sendTransaction(trx) }
     }
+  }
+
+  /**
+   * 判断Peer是否已经在连接列表内
+   */
+  fun peerConnected(peer: Peer): Boolean {
+    return peers.any { it.node.nodeId == peer.node.nodeId }
+  }
+
+  /**
+   * 处理同步过来的区块数据，检索区块是否已经存在，只保存新增区块。
+   */
+  fun processPeerNewBlock(block: Block, peer: Peer) {
+    val importResult = blockChain.importBlock(block)
+
+    if (importResult == BlockChain.ImportResult.BEST_BLOCK) {
+      if (miningBlock != null && block.height >= miningBlock!!.height) {
+        BlockMiner.skip()
+      }
+
+      broadcastBlock(block, peer)
+    }
+  }
+
+  private fun broadcastBlock(block: Block, skipPeer: Peer) {
+    peers.filterNot { it == skipPeer }.forEach { it.sendNewBlock(block) }
   }
 }

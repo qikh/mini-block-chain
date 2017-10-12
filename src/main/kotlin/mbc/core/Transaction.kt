@@ -14,7 +14,7 @@ import java.util.*
  * 为简化模型，没有加入费用(fee)。
  */
 class Transaction(val senderAddress: ByteArray, val receiverAddress: ByteArray, val amount: BigInteger,
-                  val time: DateTime, val publicKey: PublicKey, var signature: ByteArray = ByteArray(0)) {
+    val time: DateTime, val publicKey: PublicKey, var signature: ByteArray = ByteArray(0)) {
 
   /**
    * 交易合法性验证。目前只验证签名长度和签名合法性。

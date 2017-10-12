@@ -13,25 +13,26 @@ import java.nio.ByteBuffer
  * 挖矿的管理类，算法可以参照https://en.bitcoin.it/wiki/Block_hashing_algorithm。
  */
 object BlockMiner {
-  private val logger = LoggerFactory.getLogger(BlockMiner.javaClass)
 
-  var mining = false
+  private val logger = LoggerFactory.getLogger(javaClass)
 
-  var currentDifficulty = 0x1e00ffff // 比特币的最小(初始)难度为0x1d00ffff，为测试方便我们降低难度为0x1e00ffff
+  var working = false
+
+  var currentDifficulty = 0x1de0ffff // 比特币的最小(初始)难度为0x1d00ffff，为测试方便我们降低难度为0x1e00ffff
 
   /**
    * 挖矿，返回nonce值和target值。目前采用阻塞模型，后期修改为更合理的异步模型。
    */
   fun mine(block: Block): MineResult {
-    logger.debug("Start mining block ...")
+    logger.debug("Miner is working ...")
 
-    mining = true
+    working = true
 
     val startTime = System.currentTimeMillis()
 
     val ver = block.version
     val parentHash = block.parentHash
-    val merkleRoot = block.merkleRoot
+    val merkleRoot = block.trxTrieRoot
     val time = (block.time.millis / 1000).toInt() // Current timestamp as seconds since 1970-01-01T00:00 UTC
     val difficulty = currentDifficulty // difficulty
 
@@ -42,12 +43,12 @@ object BlockMiner {
     val targetStr = "%064x".format(target)
 
     var nonce = 0
-    while (mining && nonce < 0x100000000) {
+    while (working && nonce < 0x100000000) {
 
       val headerBuffer = ByteBuffer.allocate(4 + 32 + 32 + 4 + 4 + 4)
       headerBuffer.put(ByteBuffer.allocate(4).putInt(ver).array()) // version
       headerBuffer.put(parentHash) // parentHash
-      headerBuffer.put(merkleRoot) // merkleRoot
+      headerBuffer.put(merkleRoot) // trxTrieRoot
       headerBuffer.put(ByteBuffer.allocate(4).putInt(time).array()) // time
       headerBuffer.put(ByteBuffer.allocate(4).putInt(difficulty).array()) // difficulty(current difficulty)
       headerBuffer.put(ByteBuffer.allocate(4).putInt(nonce).array()) // nonce
@@ -61,24 +62,31 @@ object BlockMiner {
       nonce += 1
     }
 
-    val endTime = System.currentTimeMillis()
+    if (working) {
+      val endTime = System.currentTimeMillis()
 
-    val interval = (endTime - startTime) / 1000
+      val interval = (endTime - startTime) / 1000
 
-    logger.debug("Mining block finished in $interval seconds.")
+      logger.debug("Mining block finished in $interval seconds.")
 
-    val totalDifficulty = block.totalDifficulty + BigInteger.valueOf(difficulty.toLong())
+      val totalDifficulty = block.totalDifficulty + BigInteger.valueOf(difficulty.toLong())
 
-    val newBlock = Block(block.version, block.height, block.parentHash, block.merkleRoot, block.coinBase,
-                         DateTime(), difficulty, nonce, totalDifficulty, block.transactions)
-    val result = MineResult(difficulty, nonce, newBlock)
+      val newBlock = Block(block.version, block.height, block.parentHash, block.coinBase,
+          DateTime(), difficulty, nonce, totalDifficulty, block.stateRoot, block.trxTrieRoot, block.transactions)
+      val result = MineResult(true, difficulty, nonce, newBlock)
 
-    mining = false
+      working = false
 
-    return result
+      return result
+    } else {
+      val result = MineResult(false, difficulty, nonce, block)
+
+      return result
+    }
   }
 
-  fun stop() {
-    mining = false
+  fun skip() {
+    logger.debug("Skip mining current block...")
+    working = false
   }
 }
