@@ -318,7 +318,7 @@ class PatriciaTrie {
 
     rootNode = updateAndSaveNode(rootNode, binToNibbbles(key), value)
 
-    logger.debug("root hash before write to db: ${Hex.toHexString(rootHash)}")
+    //logger.debug("root hash before write to db: ${Hex.toHexString(rootHash)}")
   }
 
   private fun updateAndSaveNode(node: TrieNode, key: Array<Int>, value: ByteArray): TrieNode {
@@ -366,8 +366,8 @@ class PatriciaTrie {
     val isLeaf = node.type == NodeType.NODE_TYPE_LEAF
     val isExtension = node.type == NodeType.NODE_TYPE_EXTENSION
 
-    logger.debug("this node is an extension node? $isExtension")
-    logger.debug("cur key , next key ${currKey.map(Int::toString)} ${key.map(Int::toString)}")
+    //logger.debug("this node is an extension node? $isExtension")
+    //logger.debug("cur key , next key ${currKey.map(Int::toString)} ${key.map(Int::toString)}")
 
     var prefixLen = 0
     var commonSize = 0
@@ -387,40 +387,41 @@ class PatriciaTrie {
     val remainKey = key.copyOfRange(prefixLen, key.size)
     val remainCurrKey = currKey.copyOfRange(prefixLen, currKey.size)
 
-    logger.debug("remain keys..")
-    logger.debug("$prefixLen, ${remainKey.map(Int::toString)}, ${remainCurrKey.map(Int::toString)}")
+    //logger.debug("remain keys..")
+    //logger.debug("$prefixLen, ${remainKey.map(Int::toString)}, ${remainCurrKey.map(Int::toString)}")
 
     if (remainKey.isEmpty() && remainCurrKey.isEmpty()) { // Keys are same.
-      logger.debug("keys were same ${node.key.map(Byte::toString)} ${key.map(Int::toString)}")
+      //logger.debug("keys were same ${node.key.map(Byte::toString)} ${key.map(Int::toString)}")
       if (isLeaf) {
-        logger.debug("not an extension node")
+        //logger.debug("not an extension node")
         return TrieNode(node.key, value)
       } else {
-        logger.debug("yes an extension node!")
+        //logger.debug("yes an extension node!")
         newNode = updateAndSaveNode(loadAndDecode(node.value), remainKey, value)
       }
     } else if (remainCurrKey.isEmpty()) { // Old key exhausted.
-      logger.debug("old key exhausted")
+      //logger.debug("old key exhausted")
       if (isExtension) {
-        logger.debug("\t is extension")
+        //logger.debug("\t is extension")
         newNode = updateAndSaveNode(loadAndDecode(node.value), remainKey, value)
       } else {
-        logger.debug("\t new branch")
+        //logger.debug("\t new branch")
         val children = EMPTY_CHILDREN_LIST
-        val subNode = TrieNode(packNibbles(withTerminator(remainKey.copyOfRange(1, remainKey.size))), value)
+        val subNode = TrieNode(
+            packNibbles(withTerminator(remainKey.copyOfRange(1, remainKey.size))), value)
         saveNodeToStorage(subNode)
         children[remainKey[0]] = nodeHash(subNode)
 
         newNode = TrieNode(EMPTY_VALUE, node.value, children)
       }
     } else { // Making branch
-      logger.debug("making a branch")
+      //logger.debug("making a branch")
       val children = EMPTY_CHILDREN_LIST
       if (remainCurrKey.size == 1 && node.type == NodeType.NODE_TYPE_EXTENSION) {
-        logger.debug("key done and is inner")
+        //logger.debug("key done and is inner")
         children[remainCurrKey[0]] = node.value
       } else {
-        logger.debug("key not done or not inner $node ${key.map(Int::toString)} ${value.map(Byte::toString)}")
+        //logger.debug("key not done or not inner $node ${key.map(Int::toString)} ${value.map(Byte::toString)}")
         val subNode = TrieNode(packNibbles(
             adaptTerminator(remainKey.copyOfRange(1, remainKey.size),
                 !isExtension)), node.value)
@@ -433,7 +434,8 @@ class PatriciaTrie {
         newNode = TrieNode(newNode.key, value, newNode.children)
       } else {
         val children = EMPTY_CHILDREN_LIST
-        val subNode = TrieNode(packNibbles(withTerminator(remainKey.copyOfRange(1, remainKey.size))), value)
+        val subNode = TrieNode(
+            packNibbles(withTerminator(remainKey.copyOfRange(1, remainKey.size))), value)
         saveNodeToStorage(subNode)
         children[remainKey[0]] = nodeHash(subNode)
       }
@@ -442,9 +444,9 @@ class PatriciaTrie {
     saveNodeToStorage(newNode)
 
     if (prefixLen > 0) {
-      logger.debug("prefix length $prefixLen")
+      //logger.debug("prefix length $prefixLen")
       newNode = TrieNode(packNibbles(currKey.copyOfRange(0, prefixLen)), nodeHash(newNode))
-      logger.debug("new node type ${newNode.type}")
+      //logger.debug("new node type ${newNode.type}")
     }
 
     return newNode
@@ -508,7 +510,8 @@ class PatriciaTrie {
 
     if (node.children != null) {
       val subNodeHash = nodeHash(
-          deleteAndDeleteStorage(loadAndDecode(node.children[key[0]]), key.copyOfRange(1, key.size)))
+          deleteAndDeleteStorage(loadAndDecode(node.children[key[0]]),
+              key.copyOfRange(1, key.size)))
 
       if (Arrays.equals(subNodeHash, node.children[key[0]])) {
         return node
@@ -541,7 +544,8 @@ class PatriciaTrie {
         return node
       }
     } else {
-      val newSubNode = deleteAndDeleteStorage(loadAndDecode(node.value), key.copyOfRange(currKey.size, key.size))
+      val newSubNode = deleteAndDeleteStorage(loadAndDecode(node.value),
+          key.copyOfRange(currKey.size, key.size))
 
       if (Arrays.equals(nodeHash(newSubNode), node.value)) {
         return node
@@ -652,7 +656,7 @@ class PatriciaTrie {
     val bin = encodeNode(node)
     val hash = CryptoUtil.sha3(bin)
     db.put(hash, bin)
-    logger.debug("SAVE NODE: ${Hex.toHexString(hash)}")
+    //logger.debug("SAVE NODE: ${Hex.toHexString(hash)}")
   }
 
 }

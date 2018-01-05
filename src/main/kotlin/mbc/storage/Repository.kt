@@ -164,7 +164,8 @@ class Repository {
    */
   fun increaseNonce(address: ByteArray) {
     val accountState = getOrCreateAccountState(address)
-    getAccountStateStore()?.update(address, CodecUtil.encodeAccountState(accountState.increaseNonce()))
+    getAccountStateStore()?.update(address,
+        CodecUtil.encodeAccountState(accountState.increaseNonce()))
   }
 
   /**
@@ -172,7 +173,18 @@ class Repository {
    */
   fun addBalance(address: ByteArray, amount: BigInteger) {
     val accountState = getOrCreateAccountState(address)
-    getAccountStateStore()?.update(address, CodecUtil.encodeAccountState(accountState.increaseBalance(amount)))
+    getAccountStateStore()?.update(address,
+        CodecUtil.encodeAccountState(accountState.increaseBalance(amount)))
+  }
+
+  fun getBlockInfo(hash: ByteArray): BlockInfo? {
+    val block = getBlock(hash)
+    if (block != null) {
+      val blockInfos = getBlockInfos(block.height)
+      return blockInfos?.first { it.hash.contentEquals(block.hash) }
+    } else {
+      return null
+    }
   }
 
   fun getBlockInfos(height: Long): List<BlockInfo>? {
@@ -183,11 +195,15 @@ class Repository {
     return getBlockStore()?.get(hash)
   }
 
+  fun saveBlock(block: Block) {
+    getBlockStore()?.put(block.hash, block)
+  }
+
   fun getBestBlock(): Block? {
     return getBestBlockStore()?.get(BEST_BLOCK_KEY)
   }
 
-  fun updateBestBlock(block:Block) {
+  fun updateBestBlock(block: Block) {
     getBestBlockStore()?.put(BEST_BLOCK_KEY, block)
   }
 

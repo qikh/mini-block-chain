@@ -9,6 +9,8 @@ import java.security.PrivateKey
 import java.security.PublicKey
 import java.util.*
 
+val COINBASE_SENDER_ADDRESS = Hex.decode("0000000000000000000000000000000000000000")
+
 /**
  * 交易记录类：记录了发送方(sender)向接受方(receiver)的转账记录，包括金额(amount)、时间戳(time)、发送方的公钥和签名。
  * 为简化模型，没有加入费用(fee)。
@@ -20,7 +22,13 @@ class Transaction(val senderAddress: ByteArray, val receiverAddress: ByteArray, 
    * 交易合法性验证。目前只验证签名长度和签名合法性。
    */
   val isValid: Boolean
-    get() = (signature.isNotEmpty() && CryptoUtil.verifyTransactionSignature(this, signature))
+    get() = (isCoinbaseTransaction() ||
+        (signature.isNotEmpty() && CryptoUtil.verifyTransactionSignature(this, signature)))
+
+  /**
+   * 是否为Coinbase Transaction。
+   */
+  fun isCoinbaseTransaction() = senderAddress.contentEquals(COINBASE_SENDER_ADDRESS)
 
   /**
    * 用发送方的私钥进行签名。

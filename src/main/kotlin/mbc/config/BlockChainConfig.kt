@@ -10,6 +10,7 @@ import org.spongycastle.util.encoders.Hex
 import java.io.*
 import java.math.BigInteger
 import java.security.PrivateKey
+import java.security.PublicKey
 import java.util.*
 
 class BlockChainConfig {
@@ -152,6 +153,11 @@ class BlockChainConfig {
     val privateKey = getNodeKey()
     val publicKey = CryptoUtil.generatePublicKey(privateKey)
     return Hex.toHexString(publicKey?.encoded)
+  }
+
+  fun getNodePubKey(): PublicKey? {
+    val privateKey = getNodeKey()
+    return CryptoUtil.generatePublicKey(privateKey)
   }
 
 

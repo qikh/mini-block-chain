@@ -1,12 +1,16 @@
 package mbc.core
 
 import mbc.storage.Repository
+import org.slf4j.LoggerFactory
+import org.spongycastle.util.encoders.Hex
 import java.math.BigInteger
 
 /**
  * 交易处理并更新账户状态。
  */
 class TransactionExecutor(val repository: Repository) {
+
+  private val logger = LoggerFactory.getLogger(javaClass)
 
   /**
    * 增加账户余额(balance)，如果amount为负数则余额减少。
@@ -24,6 +28,13 @@ class TransactionExecutor(val repository: Repository) {
   }
 
   /**
+   * Coinbase Reward，coinbaseAddress增加金额。
+   */
+  fun coinbaseTransfer(coinbaseAddress: ByteArray, amount: BigInteger) {
+    addBalance(coinbaseAddress, amount)
+  }
+
+  /**
    * 根据交易记录更新区块链的状态(state)，发送方的余额会减少，接收方的余额会增加。
    * 区块链的状态更新应该是原子操作，持久层是数据库可以使用事务功能。
    */
@@ -35,6 +46,20 @@ class TransactionExecutor(val repository: Repository) {
 
       // 执行转账
       transfer(trx.senderAddress, trx.receiverAddress, trx.amount)
+    } else {
+      throw IllegalTransactionException()
+    }
+  }
+
+  /**
+   * 执行Coinbase Transaction。
+   */
+  fun executeCoinbaseTransaction(trx: Transaction) {
+    if (trx.isCoinbaseTransaction()) {
+      logger.debug("Reward ${trx.amount} coins to ${Hex.toHexString(trx.receiverAddress)}")
+
+      // Execute reward
+      coinbaseTransfer(trx.receiverAddress, trx.amount)
     } else {
       throw IllegalTransactionException()
     }

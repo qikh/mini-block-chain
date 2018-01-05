@@ -8,6 +8,7 @@ import mbc.util.CryptoUtil
 import org.joda.time.DateTime
 import org.slf4j.LoggerFactory
 import org.spongycastle.util.encoders.Hex
+import java.math.BigInteger
 import java.util.*
 
 /**
@@ -60,10 +61,22 @@ class BlockChain(val config: BlockChainConfig) {
   fun generateNewBlock(transactions: List<Transaction>): Block {
     val parent = bestBlock
 
+    val coinbaseTransaction = generateCoinBaseTransaction()
+    val transactionsToInclude = listOf(coinbaseTransaction) + transactions
+
     val block = Block(config.getPeerVersion(), parent.height + 1, parent.hash,
         config.getMinerCoinbase(), DateTime(), 0, 0, parent.totalDifficulty,
-        CryptoUtil.merkleRoot(emptyList()), CryptoUtil.merkleRoot(transactions), transactions)
+        CryptoUtil.merkleRoot(emptyList()), CryptoUtil.merkleRoot(transactions),
+        transactionsToInclude)
     return block
+  }
+
+  /**
+   * 构造CoinBase Transaction (https://bitcoin.org/en/glossary/coinbase-transaction)，矿工的收益。
+   */
+  private fun generateCoinBaseTransaction(): Transaction {
+    return Transaction(COINBASE_SENDER_ADDRESS,
+        config.getMinerCoinbase(), BigInteger.valueOf(25), DateTime(), config.getNodePubKey()!!)
   }
 
   /**
@@ -72,9 +85,12 @@ class BlockChain(val config: BlockChainConfig) {
    * TODO: 费用的计算和分配。
    */
   fun processBlock(block: Block): Block {
-    for (trx in block.transactions) {
+    transactionExecutor.executeCoinbaseTransaction(block.transactions[0])
+
+    for (trx in block.transactions.drop(1)) {
       transactionExecutor.execute(trx)
     }
+
     return Block(block.version, block.height, block.parentHash, block.coinBase,
         block.time, block.difficulty, block.nonce, block.totalDifficulty,
         repository.getAccountStateStore()?.rootHash ?: ByteArray(0), block.trxTrieRoot,
@@ -103,9 +119,9 @@ class BlockChain(val config: BlockChainConfig) {
       logger.debug("Push block $block to end of chain.")
       val blockToSave = processBlock(block)
 
-      repository.getBlockStore()?.put(blockToSave.hash, blockToSave)
+      repository.saveBlock(blockToSave)
 
-      updateBlockInfoIndex(blockToSave)
+      updateMainBlockInfo(blockToSave)
 
       logger.debug("Block hash: ${Hex.toHexString(blockToSave.hash)}")
 
@@ -113,48 +129,105 @@ class BlockChain(val config: BlockChainConfig) {
 
       return ImportResult.BEST_BLOCK
     } else {
-      if (block.height > bestBlock.height) {
-        logger.debug("Skip block $block.")
-
-        return ImportResult.NO_PARENT
-      } else {
-        if (repository.getBlockStore()?.get(block.hash) != null) { // Already exist
+      if (block.height < bestBlock.height) {
+        if (repository.getBlock(block.hash) != null) { // Already exist
           logger.debug(
               "Block already exist. hash: ${Hex.toHexString(block.hash)}, height: ${block.height}")
 
           return ImportResult.EXIST
-        } else if (repository.getBlockStore()?.get(block.parentHash) != null) { // Fork
+        } else if (repository.getBlock(block.parentHash) != null) { // Branch fork
+          logger.debug("Import branch block $block.")
+
+          return importBranchBlock(block)
+        } else {
+          logger.debug("Import block without parent block $block.")
+
+          return importBranchBlock(block)
+        }
+      } else if (block.height == bestBlock.height) {
+        if (repository.getBlock(block.hash) != null) { // Already exist
+          logger.debug(
+              "Block already exist. hash: ${Hex.toHexString(block.hash)}, height: ${block.height}")
+
+          return ImportResult.EXIST
+        } else if (repository.getBlock(block.parentHash) != null) { // Fork
           logger.debug("Fork block $block.")
 
           return forkBlock(block)
         } else {
-          logger.debug("Skip block $block.")
+          logger.debug("Import block without parent block $block.")
 
-          return ImportResult.NO_PARENT
+          return importBranchBlock(block)
         }
+      } else {
+        logger.debug("Import block without parent block $block.")
+
+        return importBranchBlock(block)
       }
     }
 
   }
 
   private fun forkBlock(block: Block): ImportResult {
-    TODO(
-        "not implemented") //To change body of created functions use File | Settings | File Templates.
+    repository.saveBlock(block)
+    updateMainBlockInfo(block)
+
+    val parentBlockHash = block.parentHash
+    var parentBlock = repository.getBlock(parentBlockHash)
+
+    while (parentBlock != null) {
+      val parentBlockInfo = repository.getBlockInfo(parentBlockHash)
+
+      if (parentBlockInfo == null) {
+        break
+      }
+
+      if (parentBlockInfo.isMain) {
+        break
+      } else {
+        updateMainBlockInfo(parentBlock)
+      }
+
+      parentBlock = repository.getBlock(parentBlock.parentHash)
+    }
     return ImportResult.BEST_BLOCK
   }
 
-  private fun updateBlockInfoIndex(block: Block) {
+  private fun importBranchBlock(block: Block): ImportResult {
+    repository.saveBlock(block)
+    updateBranchBlockInfo(block)
+
+    return ImportResult.NON_BEST_BLOCK
+  }
+
+  private fun updateMainBlockInfo(block: Block) {
     val isMain = true
-    val newBlockInfo = BlockInfo(block.hash, isMain, block.totalDifficulty)
+    val blockInfo = BlockInfo(block.hash, isMain, block.totalDifficulty)
 
     val blockIndexStore = repository.getBlockIndexStore()
     val k = CodecUtil.longToByteArray(block.height)
     val blockInfoList = blockIndexStore?.get(k)
     if (blockInfoList != null) {
-      val filtered = blockInfoList.dropWhile { Arrays.equals(it.hash, newBlockInfo.hash) }
-      blockIndexStore?.put(CodecUtil.longToByteArray(block.height), filtered.plus(newBlockInfo))
+      val filtered = blockInfoList.dropWhile { it.hash.contentEquals(blockInfo.hash) }
+      val converted = filtered.map { BlockInfo(it.hash, false, it.totalDifficulty) }
+      blockIndexStore.put(CodecUtil.longToByteArray(block.height), converted.plus(blockInfo))
     } else {
-      blockIndexStore?.put(CodecUtil.longToByteArray(block.height), listOf(newBlockInfo))
+      blockIndexStore?.put(CodecUtil.longToByteArray(block.height), listOf(blockInfo))
+    }
+  }
+
+  private fun updateBranchBlockInfo(block: Block) {
+    val isMain = false
+    val blockInfo = BlockInfo(block.hash, isMain, block.totalDifficulty)
+
+    val blockIndexStore = repository.getBlockIndexStore()
+    val k = CodecUtil.longToByteArray(block.height)
+    val blockInfoList = blockIndexStore?.get(k)
+    if (blockInfoList != null) {
+      val filtered = blockInfoList.dropWhile { it.hash.contentEquals(blockInfo.hash) }
+      blockIndexStore.put(CodecUtil.longToByteArray(block.height), filtered.plus(blockInfo))
+    } else {
+      blockIndexStore?.put(CodecUtil.longToByteArray(block.height), listOf(blockInfo))
     }
   }
 

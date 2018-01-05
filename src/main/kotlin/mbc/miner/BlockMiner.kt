@@ -18,7 +18,7 @@ object BlockMiner {
 
   var working = false
 
-  var currentDifficulty = 0x1de0ffff // 比特币的最小(初始)难度为0x1d00ffff，为测试方便我们降低难度为0x1e00ffff
+  var currentDifficulty = 0x1d80ffff // 比特币的最小(初始)难度为0x1d00ffff，为测试方便我们降低难度为0x1e00ffff
 
   /**
    * 挖矿，返回nonce值和target值。目前采用阻塞模型，后期修改为更合理的异步模型。
