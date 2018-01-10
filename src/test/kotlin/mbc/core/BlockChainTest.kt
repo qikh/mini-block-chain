@@ -45,8 +45,6 @@ class BlockChainTest {
   @After
   fun close() {
     repository.getAccountStateStore()?.db?.close()
-    repository.getAccountStateStore()?.db?.close()
-    repository.getAccountStateStore()?.db?.close()
   }
 
   /**
@@ -172,8 +170,8 @@ class BlockChainTest {
     val bob = Account(kp2.public)
 
     // 初始金额为200
-    transactionExecutor.addBalance(alice.address, BigInteger.valueOf(200))
     transactionExecutor.addBalance(bob.address, BigInteger.valueOf(200))
+    transactionExecutor.addBalance(alice.address, BigInteger.valueOf(200))
 
     // Alice向Bob转账100
     val trx = Transaction(alice.address, bob.address, BigInteger.valueOf(100), DateTime(), kp1.public)
@@ -320,6 +318,7 @@ class BlockChainTest {
     println("Block nonce: ${minedBlock.nonce}")
     assertNotEquals(minedBlock.difficulty, 0)
     assertNotEquals(minedBlock.nonce, 0)
+    assert(CryptoUtil.validateBlock(minedBlock))
   }
 
   /**

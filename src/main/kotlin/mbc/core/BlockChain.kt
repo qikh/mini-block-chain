@@ -115,6 +115,11 @@ class BlockChain(val config: BlockChainConfig) {
    * TODO: 实现AccountState的Merkle Patricia Tree存储。
    */
   fun importBlock(block: Block): ImportResult {
+    // Validate Block
+    if (!block.isValid) {
+      return ImportResult.INVALID_BLOCK
+    }
+
     if (isNextBlock(block)) {
       logger.debug("Push block $block to end of chain.")
       val blockToSave = processBlock(block)

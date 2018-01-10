@@ -97,10 +97,16 @@ class PatriciaTrieTest {
     db.init()
     val trie = PatriciaTrie(db)
     trie.update(arrayOf<Byte>(0x01, 0x01, 0x02).toByteArray(), "11111".toByteArray())
+    trie.update(arrayOf<Byte>(0x01, 0x02).toByteArray(), "11112".toByteArray())
+    trie.update(arrayOf<Byte>(0x01, 0x02, 0x01, 0x03).toByteArray(), "11113".toByteArray())
     trie.update(arrayOf<Byte>(0x01, 0x01, 0x03).toByteArray(), "22222".toByteArray())
+    trie.update(arrayOf<Byte>(0x01, 0x02, 0x03).toByteArray(), "22221".toByteArray())
 
     assertArrayEquals(trie.get(arrayOf<Byte>(0x01, 0x01, 0x02).toByteArray()), "11111".toByteArray())
+    assertArrayEquals(trie.get(arrayOf<Byte>(0x01, 0x02).toByteArray()), "11112".toByteArray())
+    assertArrayEquals(trie.get(arrayOf<Byte>(0x01, 0x02, 0x01, 0x03).toByteArray()), "11113".toByteArray())
     assertArrayEquals(trie.get(arrayOf<Byte>(0x01, 0x01, 0x03).toByteArray()), "22222".toByteArray())
+    assertArrayEquals(trie.get(arrayOf<Byte>(0x01, 0x02, 0x03).toByteArray()), "22221".toByteArray())
 
     trie.delete(arrayOf<Byte>(0x01, 0x01, 0x03).toByteArray())
 

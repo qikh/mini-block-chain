@@ -22,6 +22,12 @@ class Block(val version: Int, val height: Long, val parentHash: ByteArray,
   val hash: ByteArray
     get() = CryptoUtil.hashBlock(this)
 
+  /**
+   * 区块内容是否合法
+   */
+  val isValid: Boolean
+    get() = CryptoUtil.validateBlock(this)
+
   fun encode(): ByteArray {
     return CodecUtil.encodeBlock(this)
   }

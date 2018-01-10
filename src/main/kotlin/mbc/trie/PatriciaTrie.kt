@@ -174,9 +174,10 @@ class TrieNode(val key: ByteArray, val value: ByteArray, val children: Array<Byt
 
   val type: NodeType
     get() {
-      if (key.isEmpty() && children == null) {
-        return NodeType.NODE_TYPE_BLANK
-      } else if (key.isNotEmpty() && children == null) {
+
+      if (equals(BLANK_NODE)) return NodeType.NODE_TYPE_BLANK
+
+      if (children == null) {
         val nibbles = unpackToNibbles(key)
         val has_terminator = nibbles.last() == NIBBLE_TERMINATOR
 
@@ -185,10 +186,8 @@ class TrieNode(val key: ByteArray, val value: ByteArray, val children: Array<Byt
         } else {
           return NodeType.NODE_TYPE_EXTENSION
         }
-      } else if (key.isEmpty() && children != null) {
-        return NodeType.NODE_TYPE_BRANCH
       } else {
-        throw Exception("Unsupported Trie Node Type")
+        return NodeType.NODE_TYPE_BRANCH
       }
     }
 
@@ -228,11 +227,13 @@ class TrieNode(val key: ByteArray, val value: ByteArray, val children: Array<Byt
   }
 
   override fun toString(): String {
+    val buffer = StringBuilder()
+    buffer.append(
+        "Node Type:$type Key:${key.map(Byte::toString)} Value:${value.map(Byte::toString)} ")
     if (type == NodeType.NODE_TYPE_BRANCH) {
-      return "${this.children?.map { it.map(Byte::toString) }}"
-    } else {
-      return "${this.key.map(Byte::toString)} ${this.value.map(Byte::toString)} "
+      buffer.append("Children Nodes: ${this.children?.map { it.map(Byte::toString) }}")
     }
+    return buffer.toString()
   }
 }
 
@@ -334,19 +335,27 @@ class PatriciaTrie {
 
   private fun update(node: TrieNode, key: Array<Int>, value: ByteArray): TrieNode {
     when (node.type) {
-      NodeType.NODE_TYPE_BLANK -> return TrieNode(packNibbles(withTerminator(key)), value, null)
+      NodeType.NODE_TYPE_BLANK -> {
+        val newNode = TrieNode(packNibbles(withTerminator(key)), value, null)
+        //logger.debug("Current Node is BLANK NODE, create new node: $newNode")
+        return newNode
+      }
       NodeType.NODE_TYPE_BRANCH -> {
         if (key.isEmpty()) { // End of branch.
-          return TrieNode(node.key, value, node.children)
+          val newNode = TrieNode(node.key, value)
+          logger.debug("It's end of branch, create new leaf node: $newNode")
+          return newNode
         } else if (node.children != null) {
           val subNodeData = node.children[key[0]]
           val subNode = loadAndDecode(subNodeData)
+//          logger.debug(
+//              "Load subnode: $subNode and ready to save new data Key: ${key.map { Int::toString }} Value: ${value.map { Int::toString }}")
           val newNode = updateAndSaveNode(subNode, key.copyOfRange(1, key.size), value)
           saveNodeToStorage(newNode)
 
-          val children = node.children.copyOf()
-          children[key[0]] = nodeHash(newNode)
-          return TrieNode(node.key, value, children)
+          //val children = node.children.copyOf()
+          node.children[key[0]] = nodeHash(newNode)
+          return node
         }
       }
       NodeType.NODE_TYPE_LEAF -> {
@@ -367,7 +376,7 @@ class PatriciaTrie {
     val isExtension = node.type == NodeType.NODE_TYPE_EXTENSION
 
     //logger.debug("this node is an extension node? $isExtension")
-    //logger.debug("cur key , next key ${currKey.map(Int::toString)} ${key.map(Int::toString)}")
+    //logger.debug("cur key : ${currKey.map(Int::toString)} , next key: ${key.map(Int::toString)}")
 
     var prefixLen = 0
     var commonSize = 0
@@ -387,8 +396,7 @@ class PatriciaTrie {
     val remainKey = key.copyOfRange(prefixLen, key.size)
     val remainCurrKey = currKey.copyOfRange(prefixLen, currKey.size)
 
-    //logger.debug("remain keys..")
-    //logger.debug("$prefixLen, ${remainKey.map(Int::toString)}, ${remainCurrKey.map(Int::toString)}")
+    //logger.debug("Remain keys.. Prefix:$prefixLen, RemainKey:${remainKey.map(Int::toString)}, RemainCurrKey:${remainCurrKey.map(Int::toString)}")
 
     if (remainKey.isEmpty() && remainCurrKey.isEmpty()) { // Keys are same.
       //logger.debug("keys were same ${node.key.map(Byte::toString)} ${key.map(Int::toString)}")
@@ -418,26 +426,29 @@ class PatriciaTrie {
       //logger.debug("making a branch")
       val children = EMPTY_CHILDREN_LIST
       if (remainCurrKey.size == 1 && node.type == NodeType.NODE_TYPE_EXTENSION) {
-        //logger.debug("key done and is inner")
+        //logger.debug("End of key and is Extension Node")
         children[remainCurrKey[0]] = node.value
       } else {
-        //logger.debug("key not done or not inner $node ${key.map(Int::toString)} ${value.map(Byte::toString)}")
+        //logger.debug("key not done or not inner Node:$node Key:${key.map(Int::toString)} Value:${value.map(Byte::toString)}")
         val subNode = TrieNode(packNibbles(
-            adaptTerminator(remainKey.copyOfRange(1, remainKey.size),
+            adaptTerminator(remainCurrKey.copyOfRange(1, remainCurrKey.size),
                 !isExtension)), node.value)
         saveNodeToStorage(subNode)
         children[remainCurrKey[0]] = nodeHash(subNode)
+        //logger.debug("Convert current node to subnode: $subNode")
       }
       newNode = TrieNode(EMPTY_VALUE, EMPTY_VALUE, children)
 
       if (remainKey.isEmpty()) {
         newNode = TrieNode(newNode.key, value, newNode.children)
       } else {
-        val children = EMPTY_CHILDREN_LIST
+        //val children = EMPTY_CHILDREN_LIST
         val subNode = TrieNode(
             packNibbles(withTerminator(remainKey.copyOfRange(1, remainKey.size))), value)
         saveNodeToStorage(subNode)
         children[remainKey[0]] = nodeHash(subNode)
+        //logger.debug("Create new subnode: $subNode")
+        newNode = TrieNode(newNode.key, newNode.value, children)
       }
     }
 

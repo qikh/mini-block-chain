@@ -2,12 +2,16 @@ package mbc.util
 
 import mbc.core.Block
 import mbc.core.Transaction
+import mbc.miner.BlockMiner
 import mbc.trie.Trie
 import org.spongycastle.crypto.params.ECDomainParameters
 import org.spongycastle.jcajce.provider.asymmetric.ec.BCECPrivateKey
 import org.spongycastle.jce.ECNamedCurveTable
 import org.spongycastle.jce.provider.BouncyCastleProvider
 import org.spongycastle.jce.spec.ECPublicKeySpec
+import org.spongycastle.util.encoders.Hex
+import java.math.BigInteger
+import java.nio.ByteBuffer
 import java.security.*
 import java.security.Security.insertProviderAt
 import java.security.interfaces.ECPublicKey
@@ -138,6 +142,36 @@ class CryptoUtil {
       } else {
         return null
       }
+    }
+
+    /**
+     * 区块合法性验证，再次执行哈希算法并与target值做对比。
+     */
+    fun validateBlock(block: Block): Boolean {
+      val headerBuffer = ByteBuffer.allocate(4 + 32 + 32 + 4 + 4 + 4)
+      val ver = block.version
+      val parentHash = block.parentHash
+      val merkleRoot = block.trxTrieRoot
+      val time = (block.time.millis / 1000).toInt() // Current timestamp as seconds since 1970-01-01T00:00 UTC
+      val difficulty = block.difficulty // difficulty
+      val nonce = block.nonce
+
+      val exp = difficulty shr 24
+      val mant = difficulty and 0xffffff
+      val target = BigInteger.valueOf(mant.toLong()).multiply(BigInteger.valueOf(2).pow(8 * (exp - 3)))
+      val targetStr = "%064x".format(target)
+
+      headerBuffer.put(ByteBuffer.allocate(4).putInt(ver).array()) // version
+      headerBuffer.put(parentHash) // parentHash
+      headerBuffer.put(merkleRoot) // trxTrieRoot
+      headerBuffer.put(ByteBuffer.allocate(4).putInt(time).array()) // time
+      headerBuffer.put(ByteBuffer.allocate(4).putInt(difficulty).array()) // difficulty(current difficulty)
+      headerBuffer.put(ByteBuffer.allocate(4).putInt(nonce).array()) // nonce
+
+      val header = headerBuffer.array()
+      val hit = Hex.toHexString(CryptoUtil.sha256(CryptoUtil.sha256(header)))
+
+      return hit < targetStr
     }
   }
 
